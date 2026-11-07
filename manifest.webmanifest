@@ -1,0 +1,13 @@
+{
+  "name": "Sổ chi tiêu & Quẹt thẻ nào",
+  "short_name": "Sổ chi tiêu",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F8F7F2",
+  "theme_color": "#F8F7F2",
+  "icons": [
+    { "src": "icon-180.jpg", "sizes": "180x180", "type": "image/jpeg" },
+    { "src": "icon-512.jpg", "sizes": "512x512", "type": "image/jpeg" }
+  ]
+}

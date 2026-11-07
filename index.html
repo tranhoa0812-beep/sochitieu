@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Sổ chi tiêu">
+<meta name="theme-color" content="#F8F7F2">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.jpg">
+<title>Sổ chi tiêu &amp; Quẹt thẻ nào</title>
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+/* Một cột kiểu app iPhone (tối đa 480px), thanh 4 tab cố định ở đáy.
+   Token --green* là "màu chủ đạo": giá trị thay theo bảng màu/vibe đang chọn (vibes.js). */
+:root{
+  --bg:#FBF4F6; --surface:#FFFFFF; --surface-2:#F8E8ED; --line:#F0D9E0;
+  --ink:#2E1F24; --muted:#7A6268;
+  --green:#AD4468; --on-green:#FFFFFF; --green-soft:#FBE1EA; --green-bag:#F2A7BF;
+  --gold:#E9AE17; --gold-soft:#FCEFC6; --gold-ink:#7A5600;
+  --c-sup:#2C6C9A; --c-eve:#B5452F; --c-eco:#6A5A96; --c-ck:#66715A; --c-cash:#946E1A;
+  --ok:#2F8A3A; --warn:#B26E12; --bad:#BE3A2B;
+  --sticker:#FFFFFF; --spark:#E2B653; --shadow:0 1px 2px rgba(60,30,20,.07),0 4px 14px rgba(60,30,20,.05);
+  --f-display:"Baloo 2","Be Vietnam Pro",system-ui,sans-serif;
+  --f-body:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-hand:"Pangolin","Baloo 2",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){ :root{
+  --bg:#1A1215; --surface:#241A1E; --surface-2:#2E2126; --line:#3D2C32;
+  --ink:#F3E6EA; --muted:#B39CA3;
+  --green:#F2A7BF; --on-green:#2A1019; --green-soft:#3D2430; --green-bag:#D9849F;
+  --gold:#F2C443; --gold-soft:#3A3114; --gold-ink:#F2C443;
+  --c-sup:#74AEDC; --c-eve:#EC876F; --c-eco:#AC9DDA; --c-ck:#A5AF94; --c-cash:#D5B15A;
+  --ok:#72C77B; --warn:#E9A94A; --bad:#F07A6B;
+  --sticker:#F5F2EC; --spark:#E8C46A; --shadow:0 1px 2px rgba(0,0,0,.3);
+  color-scheme:dark }}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;-webkit-text-size-adjust:100%}
+img{max-width:100%}
+[hidden]{display:none!important}
+.app{max-width:480px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-top:calc(12px + env(safe-area-inset-top,0px));padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+h1,h2,h3{font-family:var(--f-display);margin:0;line-height:1.15;text-wrap:balance}
+h1{font-size:27px;font-weight:800;letter-spacing:-.01em}
+h2{font-size:19px;font-weight:700}
+h3{font-size:16px;font-weight:700}
+p{margin:0}
+a{color:var(--green)}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.xs{font-size:12px}
+.stack{display:flex;flex-direction:column;gap:12px}
+.view{display:flex;flex-direction:column;gap:18px}
+.row{display:flex;align-items:center;gap:10px}
+.between{justify-content:space-between}
+.wrap{flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.sec-label{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:var(--shadow)}
+.sticker{width:40px;height:40px;border-radius:12px;background:var(--sticker);display:grid;place-items:center;flex:none;overflow:hidden;border:1px solid var(--line)}
+.sticker img{width:34px;height:34px;object-fit:contain}
+.sticker.sm{width:32px;height:32px;border-radius:10px}.sticker.sm img{width:27px;height:27px}
+
+/* header */
+.top{display:flex;align-items:center;gap:10px}
+.appmark{width:46px;height:46px;border-radius:13px;background:var(--sticker);border:1px solid var(--line);display:grid;place-items:center;flex:none;overflow:hidden}
+.appmark img{width:40px;height:40px;object-fit:contain}
+.avwrap{position:relative;flex:none;display:block;width:50px;height:50px}
+.avatar{width:50px;height:50px;border-radius:50%;object-fit:cover;background:#FFFFFF;border:2px solid var(--green-bag);display:block}
+.hat{position:absolute;width:36px;height:31px;left:-9px;top:-16px;transform:rotate(-20deg)}
+.hello{font-size:21px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#v-nhap .top{gap:8px}
+.iconbtn{position:relative;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;flex:none;color:var(--green)}
+.iconbtn svg{width:21px;height:21px}
+.iconbtn .dot{position:absolute;top:5px;right:5px;width:9px;height:9px;border-radius:50%;background:var(--bad);border:2px solid var(--surface)}
+.vibebtn{display:flex;align-items:center;gap:4px;border:1.5px solid var(--green-bag);background:var(--surface);color:var(--green);border-radius:999px;padding:7px 10px 7px 8px;font-size:13px;font-weight:700;flex:none;white-space:nowrap}
+.vibebtn svg{width:17px;height:17px}
+
+/* reminders */
+.remind{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:14px;background:var(--gold-soft);color:var(--ink);font-size:13.5px}
+.remind .dot{width:8px;height:8px;border-radius:50%;background:var(--gold);margin-top:6px;flex:none}
+.remind.warn .dot{background:var(--bad)}
+.remind b{font-weight:600}
+
+/* pills */
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid currentColor;white-space:nowrap;background:color-mix(in srgb,currentColor 10%,transparent)}
+.m-sup{color:var(--c-sup)}.m-eve{color:var(--c-eve)}.m-eco{color:var(--c-eco)}.m-ck{color:var(--c-ck)}.m-cash{color:var(--c-cash)}
+.tag{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.tag.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+.tag.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.tag.gold{background:var(--gold-soft);color:var(--gold-ink)}
+
+/* buttons */
+.btn{border:0;border-radius:14px;padding:12px 16px;font-weight:600;background:var(--surface-2);color:var(--ink)}
+.btn.primary{background:var(--green);color:var(--on-green)}
+.btn.ghost{background:transparent;border:1px solid var(--line)}
+.btn.danger{background:transparent;border:1px solid var(--bad);color:var(--bad)}
+.btn.sm{padding:7px 12px;border-radius:11px;font-size:13.5px}
+.btn.block{width:100%}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.5}
+
+/* forms */
+.field{display:flex;flex-direction:column;gap:3px;min-width:0}
+.field label{font-size:11.5px;color:var(--muted);font-weight:500}
+.field input,.field select,.field textarea{width:100%;min-width:0;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:9px 10px;font:500 15px var(--f-body)}
+.field.wide{grid-column:1/-1}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg{display:flex;background:var(--surface-2);border-radius:12px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;border-radius:9px;padding:7px 6px;font-size:13.5px;font-weight:600;color:var(--muted);white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.check-row{display:flex;gap:10px;align-items:center;font-size:14px}
+.check-row input{width:20px;height:20px;accent-color:var(--green)}
+
+/* composer */
+.composer{background:var(--surface);border:1.5px solid var(--green-bag);border-radius:22px;padding:14px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow)}
+.composer textarea{width:100%;border:0;background:var(--surface-2);border-radius:14px;padding:12px 14px;font:500 18px/1.35 var(--f-body);color:var(--ink);resize:none;min-height:64px}
+.composer textarea::placeholder{color:var(--muted);font-weight:400}
+.parsed{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.methods{display:flex;flex-wrap:wrap;gap:6px}
+.methods button{border:1.5px solid var(--line);background:var(--surface);border-radius:12px;padding:7px 10px;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px}
+.methods button .sw{width:10px;height:10px;border-radius:3px;background:currentColor}
+.methods button[aria-pressed="true"]{border-color:currentColor;background:color-mix(in srgb,currentColor 12%,var(--surface))}
+.suggest{border-radius:16px;padding:12px;background:var(--green-soft);display:flex;flex-direction:column;gap:8px}
+.suggest .best{display:flex;align-items:center;gap:10px}
+.suggest .cb{font-family:var(--f-display);font-weight:800;font-size:22px;color:var(--green)}
+.suggest .second{font-size:13px;color:var(--muted);border-top:1px dashed var(--line);padding-top:7px}
+.suggest.plain{background:var(--surface-2)}
+.ask{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* quick */
+.quick{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.qbtn{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:14px;background:var(--surface);border:1px solid var(--line);text-align:left;min-width:0}
+.qbtn .t{font-weight:600;font-size:14px;line-height:1.2}
+.qbtn .s{font-size:12px;color:var(--muted)}
+.qbtn > span:last-child{min-width:0}
+.storebtn{display:flex;align-items:center;gap:10px;padding:12px;border-radius:16px;border:1.5px dashed var(--green-bag);background:transparent;width:100%;text-align:left}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chipbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 11px;font-size:13.5px}
+
+/* lists */
+.list{display:flex;flex-direction:column}
+.item{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);width:100%;background:transparent;border-left:0;border-right:0;border-top:0;text-align:left}
+.item:last-child{border-bottom:0}
+.item .amt{font-weight:700;text-align:right;white-space:nowrap}
+.item .sub{font-size:12.5px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.cbk{font-size:12px;color:var(--green);font-weight:600}
+.empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px 0;color:var(--muted);text-align:center}
+.due{display:flex;gap:12px;align-items:center;padding:12px;border-radius:16px;background:var(--surface);border:1px solid var(--line)}
+.due .when{font-size:12px;color:var(--muted)}
+.due input{width:110px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:6px 8px;font:600 14px var(--f-body);text-align:right}
+
+/* plan */
+.monthbar{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.monthbar button{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:8px 12px;display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:86px}
+.monthbar button b{font-family:var(--f-display);font-size:16px}
+.monthbar button span{font-size:11.5px;color:var(--muted)}
+.monthbar button[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:var(--on-green)}
+.monthbar button[aria-pressed="true"] span{color:var(--on-green);opacity:.85}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:11px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.kpi .v{font-family:var(--f-display);font-weight:800;font-size:21px;line-height:1.1}
+.kpi .l{font-size:12px;color:var(--muted)}
+.kpi.hl{background:var(--gold-soft);border-color:transparent}
+.kpi.hl .v{color:var(--gold-ink)}
+.meter{height:10px;border-radius:999px;background:var(--surface-2);position:relative;overflow:hidden}
+.meter i{position:absolute;inset:0 auto 0 0;border-radius:999px;background:var(--green)}
+.meter i.ghost{opacity:.35}
+.meter.sup i{background:var(--c-sup)}.meter.eve i{background:var(--c-eve)}
+.ticks{position:relative;height:16px;font-size:11px;color:var(--muted)}
+.ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.ticks span:first-child{transform:none}.ticks span:last-child{transform:translateX(-100%)}
+.prow{display:grid;grid-template-columns:minmax(0,1fr) 118px;gap:6px 10px;padding:11px 0;border-bottom:1px solid var(--line);align-items:center}
+.prow:last-child{border-bottom:0}
+.prow .name{font-weight:600;background:none;border:0;padding:0;text-align:left;color:var(--ink)}
+.prow .meta{font-size:12px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:3px}
+.prow input{width:100%;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:7px 9px;font:600 14.5px var(--f-body);text-align:right;font-variant-numeric:tabular-nums}
+.prow input::placeholder{color:var(--muted);opacity:.55;font-weight:500}
+.prow .right{display:flex;flex-direction:column;gap:4px;align-items:stretch}
+.prow .right .cbk{font-size:11.5px;text-align:right}
+.prow select.msel{border:1px solid currentColor;border-radius:999px;background:color-mix(in srgb,currentColor 10%,var(--surface));font:600 12px var(--f-body);padding:2px 6px;color:inherit}
+.paidbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;font-size:12px;font-weight:600;padding:2px 9px;color:var(--muted)}
+.paidbtn.on{background:color-mix(in srgb,var(--ok) 14%,transparent);border-color:transparent;color:var(--ok)}
+.rest-banner{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;background:var(--green-soft);font-size:13.5px}
+.bigbuy{border:1.5px dashed var(--gold);border-radius:18px;padding:13px;display:flex;flex-direction:column;gap:10px;background:var(--surface)}
+.opt{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opt button{border:1.5px solid var(--line);background:var(--surface);border-radius:14px;padding:9px 10px;text-align:left;display:flex;flex-direction:column;gap:1px}
+.opt button b{font-family:var(--f-display);font-size:17px}
+.opt button[aria-pressed="true"]{border-color:var(--green);background:var(--green-soft)}
+
+/* report */
+.hero-num{display:flex;flex-direction:column;gap:2px}
+.hero-num .v{font-family:var(--f-display);font-weight:800;font-size:34px;line-height:1}
+.rangenav{display:flex;align-items:center;gap:8px}
+.rangenav button{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--surface);flex:none}
+.bars{display:flex;flex-direction:column;gap:9px}
+.bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px;font-size:13.5px}
+.bar .track{grid-column:1/-1;height:8px;background:var(--surface-2);border-radius:999px;overflow:hidden}
+.bar .track i{display:block;height:100%;background:var(--green-bag);border-radius:999px}
+.bar:first-child .track i{background:var(--green)}
+.stackbar{display:flex;height:16px;border-radius:999px;overflow:hidden;gap:2px;background:var(--surface-2)}
+.stackbar i{display:block;height:100%}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:13px}
+.legend div{display:flex;align-items:center;gap:7px;min-width:0}
+.legend .sw{width:10px;height:10px;border-radius:3px;flex:none}
+.legend .v{margin-left:auto;font-weight:600}
+.cardrep{display:flex;flex-direction:column;gap:10px}
+.cardrep + .cardrep{border-top:1px solid var(--line);padding-top:14px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:5px 10px;font-size:13.5px;align-items:center}
+.kv .k{color:var(--muted)}
+.kv .v{font-weight:600;text-align:right}
+.kv input{width:120px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:9px;padding:5px 8px;font:600 14px var(--f-body);text-align:right}
+.pnav{display:flex;align-items:center;gap:6px}
+.pnav button{border:1px solid var(--line);background:var(--surface);border-radius:8px;width:28px;height:28px}
+
+/* rules */
+.bankcard{border-radius:18px;padding:14px;color:#FFFFFF;display:flex;flex-direction:column;gap:12px;min-height:112px;position:relative;overflow:hidden}
+.bankcard.sup{background:linear-gradient(135deg,#1F4F75,#3C7FB0)}
+.bankcard.eve{background:linear-gradient(135deg,#8E2F20,#C9573D)}
+.bankcard.eco{background:linear-gradient(135deg,#4B3F73,#7E6DB0)}
+.bankcard .chip{width:34px;height:25px;border-radius:6px;background:linear-gradient(135deg,#F4D27A,#D9A92E)}
+.bankcard .nm{font-family:var(--f-display);font-weight:800;font-size:21px;line-height:1.1}
+.bankcard .ty{font-size:12.5px;opacity:.9}
+.bankcard .upd{position:absolute;right:14px;top:14px;font-size:12px;opacity:.85}
+details.cardbox{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:10px}
+details.cardbox > summary{list-style:none;cursor:pointer}
+details.cardbox > summary::-webkit-details-marker{display:none}
+.cardbody{display:flex;flex-direction:column;gap:14px;padding:14px 4px 4px}
+.rates{width:100%;border-collapse:collapse;font-size:13.5px}
+.rates td{padding:7px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.rates tr:last-child td{border-bottom:0}
+.rates td:last-child{text-align:right;font-weight:700;white-space:nowrap;padding-left:10px}
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.tbl{border-collapse:collapse;width:100%;min-width:420px;font-size:13.5px}
+.tbl th,.tbl td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font-size:12px;color:var(--muted);font-weight:600;background:var(--surface-2)}
+.tbl tr:last-child td{border-bottom:0}
+.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.rule{display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:16px;background:var(--surface-2);font-size:14px}
+
+/* nav */
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.nav .in{max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))}
+.nav a{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 2px 10px;text-decoration:none;color:var(--muted);font-size:11.5px;font-weight:600}
+.nav a svg{width:24px;height:24px}
+.nav a[aria-current="page"]{color:var(--green)}
+.nav a[aria-current="page"] .ic{background:var(--green-soft)}
+.nav .ic{width:46px;height:30px;border-radius:999px;display:grid;place-items:center}
+
+/* sheets & toast */
+.backdrop{position:fixed;inset:0;background:rgba(10,5,5,.45);z-index:30}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;max-height:90%;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg);border-radius:22px 22px 0 0;padding-top:10px;padding-bottom:calc(18px + env(safe-area-inset-bottom,0px))}
+.sheet .in{max-width:480px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:12px}
+.grab{width:40px;height:5px;border-radius:9px;background:var(--line);margin:0 auto 4px}
+.prompt{font-size:13.5px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;white-space:pre-wrap;word-break:break-word;-webkit-user-select:text;user-select:text}
+.codebox{width:100%;min-height:120px;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--surface);color:var(--ink);font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:vertical}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:14px;padding:8px 0;border-bottom:1px solid var(--line)}
+.check:last-child{border-bottom:0}
+.check .mk{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:13px;font-weight:700}
+.mk.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.mk.add{background:var(--gold-soft);color:var(--gold-ink)}
+.mk.no{background:var(--surface-2);color:var(--muted)}
+.mk.bad{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;max-width:calc(100% - 32px);text-align:center}
+
+/* vibe panel */
+.palettes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.palettes button{border:1.5px solid var(--line);background:var(--surface);border-radius:14px;padding:9px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12.5px;font-weight:600;min-width:0}
+.palettes button[aria-pressed="true"],.vibes button[aria-pressed="true"]{border-color:var(--green);box-shadow:0 0 0 2px var(--green-soft)}
+.palettes .dots{display:flex}
+.palettes .dots i{width:20px;height:20px;border-radius:50%;border:2px solid var(--surface);margin-left:-6px}
+.palettes .dots i:first-child{margin-left:0}
+.vibes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.vibes button{border:1.5px solid var(--line);background:var(--surface);border-radius:14px;padding:10px;display:flex;align-items:center;gap:9px;font-weight:600;text-align:left;min-width:0}
+.vibes img{width:30px;height:34px;object-fit:contain;border-radius:8px;flex:none;background:#F8F7F2}
+.vibepanel{display:flex;flex-direction:column;gap:14px}
+.vibepanel hr{border:0;border-top:1px dashed var(--line);margin:0}
+.vnote{display:flex;flex-direction:column;gap:4px;padding:11px 12px;border-radius:14px;background:var(--gold-soft);font-size:13.5px}
+.vsteps{margin:0;padding:0;list-style:none;counter-reset:st;display:flex;flex-direction:column;gap:10px;font-size:14px}
+.vsteps > li{counter-increment:st;position:relative;padding-left:34px;min-width:0}
+.vsteps > li::before{content:counter(st);position:absolute;left:0;top:0;width:24px;height:24px;border-radius:50%;background:var(--green);color:var(--on-green);font-weight:700;font-size:13px;display:grid;place-items:center}
+
+/* ===== Vibe Giáng sinh ===== */
+.holly{width:30px;height:23px;flex:none}
+:root:not([data-vibe="noel"]) .noel-only{display:none}
+:root[data-vibe="noel"] .basic-only{display:none}
+:root[data-vibe="noel"] .composer{position:relative;overflow:hidden;padding-top:20px}
+:root[data-vibe="noel"] .composer::before{content:"";position:absolute;inset:0 0 auto 0;height:7px;background:repeating-linear-gradient(-45deg,#B5432F 0 9px,#F7F1E8 9px 18px)}
+:root[data-vibe="noel"] h1,:root[data-vibe="noel"] h2,:root[data-vibe="noel"] h3{font-family:var(--f-hand);font-weight:400;letter-spacing:0}
+:root[data-vibe="noel"] h1{color:var(--green)}
+.vband{display:flex;align-items:flex-end;justify-content:space-between;gap:4px;padding:8px 12px;border-radius:18px;background:#F8F7F2;border:1px dashed var(--line)}
+.vband img{height:58px;width:auto;max-width:19%;object-fit:contain;flex:0 1 auto;min-width:0}
+.sparks{position:fixed;inset:0;pointer-events:none;z-index:5;overflow:hidden}
+:root:not([data-vibe="noel"]) .sparks{display:none}
+.sparks i{position:absolute;width:var(--s);height:var(--s);background:var(--spark);clip-path:polygon(50% 0,61% 39%,100% 50%,61% 61%,50% 100%,39% 61%,0 50%,39% 39%);opacity:.2;animation:tw ease-in-out infinite alternate}
+@keyframes tw{to{opacity:.9;transform:scale(1.2)}}
+@media (prefers-reduced-motion:reduce){.sparks i{animation:none;opacity:.5}}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.4}}}
+@media (max-width:360px){.parsed,.kpis,.fgrid,.opt{grid-template-columns:1fr}.prow{grid-template-columns:minmax(0,1fr) 104px}.hello{font-size:20px}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ========== TRANG 1: NHẬP LIỆU ========== -->
+<section class="view" id="v-nhap">
+  <div class="top">
+    <span class="avwrap">
+      <img class="avatar" src="img/avatar.jpg" alt="">
+      <svg class="hat noel-only" viewBox="0 0 46 40" aria-hidden="true"><path d="M5 30C9 15 21 4 38 6c-6 4-8 12-6 24z" fill="#B5432F"/><path d="M14 22c5-8 12-12 20-13" fill="none" stroke="#8F3324" stroke-width="2" stroke-linecap="round" opacity=".6"/><rect x="2" y="26" width="34" height="9" rx="4.5" fill="#FFFFFF" stroke="#E6D9D0"/><circle cx="39" cy="7" r="5" fill="#FFFFFF" stroke="#E6D9D0"/></svg>
+    </span>
+    <div class="grow">
+      <h1 class="hello">Chào Jasmine</h1>
+    </div>
+    <button class="vibebtn" type="button" id="vibeToggle" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>Đổi vibe</button>
+    <button class="iconbtn" type="button" data-open-sync aria-label="Đồng bộ OneDrive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.4 1.5A3.8 3.8 0 0 1 17.5 18z"/><path d="M12 11v5M9.8 13.2 12 11l2.2 2.2"/></svg><span class="dot" data-syncdot hidden></span></button>
+  </div>
+  <p class="muted small" id="helloSub" style="margin-top:-10px"></p>
+  <div class="panel" id="vibeQuick" data-vibepanel="q" hidden></div>
+  <div class="vband" id="vband" aria-hidden="true"></div>
+
+  <div class="composer">
+    <div class="row between">
+      <h2 class="row" style="gap:6px"><svg class="holly noel-only" viewBox="0 0 40 30" aria-hidden="true"><path d="M2 16C6 6 15 3 21 9c-2 1-3 3-2 5-3-1-5 1-5 3-2-2-5-2-6 0-1-2-4-2-6-1z" fill="#4E6B47"/><path d="M38 16C34 6 25 3 19 9c2 1 3 3 2 5 3-1 5 1 5 3 2-2 5-2 6 0 1-2 4-2 6-1z" fill="#5E7D55"/><circle cx="17" cy="15" r="4" fill="#B5432F"/><circle cx="23" cy="15" r="4" fill="#A63D2B"/><circle cx="20" cy="20" r="4" fill="#C4553D"/></svg>Ghi khoản chi</h2>
+      <span class="xs muted">dùng micro bàn phím để nói</span>
+    </div>
+    <textarea id="q" rows="2" placeholder="VD: bánh mì 20k · đi chợ 150k · Dai-ichi 5tr4" autocomplete="off"></textarea>
+    <div class="parsed">
+      <div class="field wide"><label for="fNote">Nội dung</label><input id="fNote" autocomplete="off"></div>
+      <div class="field"><label for="fAmt">Số tiền (đ)</label><input id="fAmt" inputmode="numeric" class="num" autocomplete="off"></div>
+      <div class="field"><label for="fDate">Ngày</label><input id="fDate" type="date"></div>
+      <div class="field wide"><label for="fGroup">Nhóm</label><select id="fGroup"></select></div>
+    </div>
+    <div id="chanWrap" class="stack" style="gap:6px">
+      <span class="xs muted">Mua ở đâu?</span>
+      <div class="seg" id="chan">
+        <button type="button" data-c="quay" aria-pressed="false">Tại quầy</button>
+        <button type="button" data-c="online" aria-pressed="true">Đặt online</button>
+      </div>
+    </div>
+    <div id="suggestBox"></div>
+    <div class="stack" style="gap:6px">
+      <span class="xs muted">Đã trả bằng</span>
+      <div class="methods" id="methods"></div>
+    </div>
+    <button class="btn primary block" id="saveBtn" type="button">Lưu khoản chi</button>
+  </div>
+
+  <div class="stack">
+    <span class="sec-label">Khoản cố định · chạm để điền sẵn</span>
+    <div class="quick" id="quick"></div>
+    <button class="storebtn" type="button" id="storeToggle" aria-expanded="false">
+      <span class="sticker sm"><img src="img/brief.jpg" alt=""></span>
+      <span class="grow"><b>Cửa hàng quẹt thẻ được</b><br><span class="xs muted">siêu thị, tiện lợi, điện máy, quần áo, nhà sách…</span></span>
+      <span class="muted">▾</span>
+    </button>
+    <div class="panel stack" id="stores" hidden>
+      <div class="seg" id="storeChan">
+        <button type="button" data-c="quay" aria-pressed="true">Tại quầy</button>
+        <button type="button" data-c="online" aria-pressed="false">Đặt online</button>
+      </div>
+      <div id="storeGroups" class="stack"></div>
+      <div class="stack" style="gap:8px;border-top:1px dashed var(--line);padding-top:12px">
+        <b class="small">Cửa hàng mới</b>
+        <div class="fgrid">
+          <div class="field"><label for="nsName">Tên cửa hàng</label><input id="nsName" placeholder="VD: Kohnan" autocomplete="off"></div>
+          <div class="field"><label for="nsCat">Loại</label><select id="nsCat"></select></div>
+        </div>
+        <button class="btn sm" type="button" id="nsAdd">Nhớ cửa hàng này</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="row between" style="margin-bottom:2px"><h3>Hôm nay</h3><span class="num small muted" id="todayTotal"></span></div>
+    <div class="list" id="todayList"></div>
+  </div>
+</section>
+
+<!-- ========== TRANG 2: KẾ HOẠCH THÁNG ========== -->
+<section class="view" id="v-ke-hoach" hidden>
+  <div class="top">
+    <div class="appmark"><img src="img/app.jpg" data-pageicon="ke-hoach" data-base="img/app.jpg" alt=""></div>
+    <div class="grow"><h1>Kế hoạch tháng</h1><p class="muted small">Khoản cố định và dự định mua · chưa vào báo cáo tới khi "đã trả"</p></div>
+  </div>
+  <div class="monthbar" id="monthbar"></div>
+  <div id="restBanner"></div>
+  <div class="kpis" id="planKpis"></div>
+  <div class="panel stack" id="supMeter"></div>
+  <div class="panel">
+    <div class="row between wrap" style="margin-bottom:4px;gap:8px">
+      <h3>Khoản trong tháng</h3>
+      <button class="btn sm ghost" type="button" id="copyPrev">Chép từ tháng trước</button>
+    </div>
+    <div id="planRows"></div>
+    <div id="onceChips" class="stack" style="gap:6px;margin-top:10px"></div>
+  </div>
+  <div id="buys" class="stack"></div>
+  <div class="row" style="gap:8px">
+    <button class="btn ghost grow" type="button" id="addItem">+ Khoản cố định</button>
+    <button class="btn ghost grow" type="button" id="addBuy">+ Dự định mua</button>
+  </div>
+</section>
+
+<!-- ========== TRANG 3: BÁO CÁO ========== -->
+<section class="view" id="v-bao-cao" hidden>
+  <div class="top">
+    <div class="appmark"><img src="img/stack.jpg" data-pageicon="bao-cao" data-base="img/stack.jpg" alt=""></div>
+    <div class="grow"><h1>Báo cáo</h1><p class="muted small">Chi vào đâu · thẻ còn bao nhiêu trần · hoàn tiền</p></div>
+  </div>
+  <div class="stack" id="reminders"></div>
+  <div class="stack" id="dueWrap">
+    <div class="row between"><span class="sec-label">Đến hạn tuần này</span><span class="xs muted">từ Kế hoạch tháng</span></div>
+    <div class="stack" id="dueList"></div>
+  </div>
+  <div class="seg" id="rangeSeg">
+    <button type="button" data-r="day" aria-pressed="false">Ngày</button>
+    <button type="button" data-r="month" aria-pressed="true">Tháng</button>
+    <button type="button" data-r="quarter" aria-pressed="false">Quý</button>
+    <button type="button" data-r="year" aria-pressed="false">Năm</button>
+    <button type="button" data-r="custom" aria-pressed="false">Tự chọn</button>
+  </div>
+  <div class="fgrid" id="customRange" hidden>
+    <div class="field"><label for="rFrom">Từ ngày</label><input id="rFrom" type="date"></div>
+    <div class="field"><label for="rTo">Đến ngày</label><input id="rTo" type="date"></div>
+  </div>
+  <div class="panel stack">
+    <div class="rangenav" id="rangeNav"><button type="button" data-step="-1" aria-label="Kỳ trước">‹</button><b class="grow" id="rangeLabel" style="text-align:center"></b><button type="button" data-step="1" aria-label="Kỳ sau">›</button></div>
+    <div class="hero-num"><span class="v num" id="repTotal"></span><span class="small muted" id="repCount"></span></div>
+    <div class="row" style="padding:10px;border-radius:14px;background:var(--surface-2)">
+      <span class="sticker sm"><img src="img/brief.jpg" alt=""></span>
+      <span class="grow small"><b>Kinh doanh bánh</b> · tính riêng, không cộng vào chi phí gia đình</span>
+      <b class="num" id="repBiz"></b>
+    </div>
+  </div>
+  <div class="panel stack"><h3>Theo nhóm</h3><div class="bars" id="groupBars"></div></div>
+  <div class="panel stack"><h3>Theo cách trả</h3><div class="stackbar" id="payBar"></div><div class="legend" id="payLegend"></div></div>
+  <div class="panel stack"><h3>Từng thẻ tín dụng</h3><div id="cardReports"></div></div>
+  <div class="panel stack">
+    <div class="row between"><h3>Dự kiến sắp trả</h3><span class="xs muted">30 ngày tới, từ Kế hoạch</span></div>
+    <div class="list" id="upcoming"></div>
+  </div>
+  <details class="panel">
+    <summary class="row between" style="cursor:pointer"><h3>Danh sách khoản chi</h3><span class="small muted" id="txCount"></span></summary>
+    <div class="list" id="txList" style="margin-top:6px"></div>
+  </details>
+  <button class="btn primary block" type="button" data-open-paste="saoke">Dán mã từ Claude</button>
+</section>
+
+<!-- ========== TRANG 4: NGUYÊN TẮC DÙNG THẺ ========== -->
+<section class="view" id="v-nguyen-tac" hidden>
+  <div class="top">
+    <div class="appmark"><img src="img/card.jpg" data-pageicon="nguyen-tac" data-base="img/card.jpg" alt=""></div>
+    <div class="grow"><h1>Nguyên tắc dùng thẻ</h1><p class="muted small">Chỉ đổi khi Jasmine yêu cầu · không lưu số thẻ, CVV</p></div>
+  </div>
+  <div id="cardsBanner"></div>
+  <div class="stack" id="cardBoxes"></div>
+  <div class="stack">
+    <h2>Khoản nào → thẻ nào</h2>
+    <div class="tblwrap"><table class="tbl">
+      <thead><tr><th>Khoản</th><th>Thẻ</th><th>MCC</th><th>Tỷ lệ</th></tr></thead>
+      <tbody id="mapRows"></tbody>
+    </table></div>
+  </div>
+  <div class="stack">
+    <h2>Khoản lớn &amp; tháng đặc biệt</h2>
+    <div class="rule"><b>Mua điện máy (tháng có Dai-ichi)</b><span>Từ ~7,4tr: Supreme cùng kỳ Dai-ichi, trần lên 1tr, hoàn thêm ~700k. Dưới ~7,4tr: đặt online bằng Everyday 5%. Mua tại quầy dưới ~7,4tr thì thẻ nào cũng gần như 0: nên đặt online rồi nhận tại cửa hàng.</span></div>
+    <div class="rule"><b>Tháng nghỉ Dai-ichi</b><span>Trần 300k Supreme còn trống: Shopee chuyển sang Supreme 12%. Điện máy nên mua vào tháng này. Supreme vẫn phải ≥3tr/kỳ; thiếu thì dồn thêm tiêm chủng hoặc thuốc vào Supreme.</span></div>
+    <div class="rule"><b>Tháng có viện phí Vinmec</b><span>Vinmec đi Supreme 6%, kỳ ≥15tr nên trần 1tr. Không mua lớn cùng kỳ vì dùng chung trần. Không trả góp nếu trả đủ được (lãi ~33,8%/năm). Tạm ứng và quyết toán nên rơi cùng kỳ.</span></div>
+  </div>
+  <div class="panel stack">
+    <h3>Ghi chú quan trọng</h3>
+    <ul class="notes">
+      <li>Trả đủ dư nợ cả 2 thẻ tín dụng mỗi kỳ (lãi 33–36%/năm).</li>
+      <li>Không trả góp trên Supreme nếu trả đủ được: mất toàn bộ điểm.</li>
+      <li>Shopee: thanh toán thẳng bằng thẻ, không nạp ShopeePay.</li>
+      <li>Everyday: mỗi giao dịch ≥200.000 đ; không quẹt Everyday tại quầy.</li>
+      <li>Eco là thẻ ghi nợ: dùng khi có voucher hoặc thay tiền mặt cho khoản nhỏ.</li>
+      <li>Mua điện máy: quẹt hoặc nhập thẳng thẻ, không qua VNPAY/MoMo.</li>
+      <li>Tiền điện: trả qua cổng EVN, không dùng Bill Payment của Shinhan.</li>
+      <li>Vay ô tô Vietcombank không trả bằng thẻ tín dụng được (Thông tư 45/2025).</li>
+      <li>Tổng đài: Techcombank 1800 588822 · Shinhan 1900 1577.</li>
+    </ul>
+  </div>
+  <div class="panel stack">
+    <div class="row between"><h3>Hội viên Inspire Pro</h3><span class="tag" id="inspireTag"></span></div>
+    <p class="small">Hoàn thêm ở WinMart, Co.op, AEON, Shopee, TikTok Shop (hóa đơn ≥500k), Highlands, Phúc Long, Katinat, Phê La (≥100k), chỉ khi tổng chi mọi thẻ Techcombank trong tháng ≥10tr. Chi hằng tháng chỉ ~2–4tr nên app chỉ ghi chú, không tính.</p>
+    <p class="small muted">Gửi tiết kiệm mới ngày 3–8: cộng tới 1,5%/năm. Sinh lời tự động +0,25%/năm khi số dư ≥5tr.</p>
+    <label class="check-row"><input type="checkbox" id="saveRemind"> Nhắc gửi tiết kiệm ngày 3 hằng tháng</label>
+  </div>
+  <div class="panel" data-vibepanel="r"></div>
+  <div class="panel stack">
+    <h3>Dữ liệu</h3>
+    <p class="small muted" id="syncInfo4"></p>
+    <div class="row" style="gap:8px">
+      <button class="btn primary grow" type="button" data-open-sync>Đồng bộ OneDrive</button>
+      <button class="btn grow" type="button" data-open-paste="quydinh">Cập nhật quy định</button>
+    </div>
+  </div>
+  <p class="xs muted" style="text-align:center" id="appVersion"></p>
+</section>
+</div>
+
+<div class="sparks" id="sparks" aria-hidden="true"></div>
+
+<nav class="nav" aria-label="Trang">
+  <div class="in">
+    <a href="#nhap" data-v="nhap"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span>Nhập liệu</a>
+    <a href="#ke-hoach" data-v="ke-hoach"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 10h18M8 14h3M8 17h6"/></svg></span>Kế hoạch</a>
+    <a href="#bao-cao" data-v="bao-cao"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>Báo cáo</a>
+    <a href="#nguyen-tac" data-v="nguyen-tac"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="3"/><path d="M2.5 10h19M6.5 15h4"/></svg></span>Nguyên tắc</a>
+  </div>
+</nav>
+
+<div class="backdrop" id="backdrop" hidden></div>
+
+<!-- Đồng bộ OneDrive -->
+<div class="sheet" id="syncSheet" hidden role="dialog" aria-label="Đồng bộ OneDrive">
+  <div class="in">
+    <div class="grab"></div>
+    <div class="row between"><h2>Đồng bộ OneDrive</h2><button class="btn sm ghost" type="button" data-close>Đóng</button></div>
+    <p class="small muted" id="syncInfo"></p>
+    <div class="panel stack">
+      <b>Lưu lên OneDrive</b>
+      <p class="small muted">Chọn <b>Lưu vào Tệp → OneDrive</b>, chọn thư mục, bấm <b>Lưu</b>. Lần sau chọn <b>Thay thế</b> để ghi đè file cũ.</p>
+      <button class="btn primary" type="button" id="syExport">Lưu lên OneDrive</button>
+    </div>
+    <div class="panel stack">
+      <b>Lấy dữ liệu</b>
+      <p class="small muted">Dùng khi đổi máy hoặc mất dữ liệu: chọn OneDrive, mở file <b>SoChiTieu.json</b>.</p>
+      <button class="btn" type="button" id="syImport">Lấy dữ liệu từ OneDrive</button>
+      <input type="file" id="syFile" accept=".json,application/json" hidden>
+    </div>
+  </div>
+</div>
+
+<!-- Dán mã từ Claude -->
+<div class="sheet" id="pasteSheet" hidden role="dialog" aria-label="Dán mã từ Claude">
+  <div class="in">
+    <div class="grab"></div>
+    <div class="row between"><h2>Dán mã từ Claude</h2><button class="btn sm ghost" type="button" data-close>Đóng</button></div>
+    <div class="seg" id="pasteType">
+      <button type="button" data-t="saoke" aria-pressed="true">Sao kê</button>
+      <button type="button" data-t="quydinh" aria-pressed="false">Quy định thẻ</button>
+    </div>
+    <div class="fgrid">
+      <div class="field"><label for="pCard">Thẻ</label><select id="pCard"><option value="sup">Supreme</option><option value="eve">Everyday</option><option value="eco">Eco</option></select></div>
+      <div class="field" id="pPeriodWrap"><label for="pPeriod">Kỳ</label><select id="pPeriod"></select></div>
+    </div>
+    <div class="stack" style="gap:6px">
+      <span class="xs muted" id="pStep1"></span>
+      <div class="prompt" id="promptText"></div>
+      <button class="btn sm" type="button" id="copyPrompt">Copy câu lệnh</button>
+    </div>
+    <div class="stack" style="gap:6px">
+      <span class="xs muted">2. Claude trả lại một khung mã. Bấm Copy ở góc khung, quay lại đây và dán vào ô dưới.</span>
+      <textarea class="codebox" id="codeIn" placeholder="#SAOKE v1 …" autocomplete="off" spellcheck="false"></textarea>
+      <button class="btn primary" type="button" id="readCode">Đọc mã</button>
+    </div>
+    <div class="panel" id="preview" hidden></div>
+  </div>
+</div>
+
+<!-- Sửa khoản chi -->
+<div class="sheet" id="txSheet" hidden role="dialog" aria-label="Sửa khoản chi">
+  <div class="in" id="txSheetIn"></div>
+</div>
+
+<!-- Khoản cố định / dự định mua -->
+<div class="sheet" id="itemSheet" hidden role="dialog" aria-label="Khoản trong kế hoạch">
+  <div class="in" id="itemSheetIn"></div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="vibes.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
