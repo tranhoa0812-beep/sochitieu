@@ -185,6 +185,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .prow .right{display:flex;flex-direction:column;gap:4px;align-items:stretch}
 .prow .right .cbk{font-size:11.5px;text-align:right}
 .prow select.msel{border:1px solid currentColor;border-radius:999px;background:color-mix(in srgb,currentColor 10%,var(--surface));font:600 12px var(--f-body);padding:2px 6px;color:inherit}
+.prow .meta + .meta{margin-top:5px}
+.prow select.msel{width:auto;max-width:100%}
+.prow select.rsel{border:1px solid var(--line);border-radius:999px;background:var(--surface);font:600 12px var(--f-body);padding:2px 6px;color:var(--ink)}
+.prow input.dsel{width:auto;max-width:150px;text-align:left;border-radius:999px;padding:2px 8px;font:600 12px var(--f-body);color:var(--ink)}
+.prow input.dsel:not([value]),.prow input.dsel[value=""]{color:var(--muted)}
+.xbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;width:24px;height:24px;font-size:11px;color:var(--muted);display:grid;place-items:center;padding:0}
 .paidbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;font-size:12px;font-weight:600;padding:2px 9px;color:var(--muted)}
 .paidbtn.on{background:color-mix(in srgb,var(--ok) 14%,transparent);border-color:transparent;color:var(--ok)}
 .rest-banner{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;background:var(--green-soft);font-size:13.5px}
@@ -387,7 +393,7 @@ details.cardbox > summary::-webkit-details-marker{display:none}
 <section class="view" id="v-ke-hoach" hidden>
   <div class="top">
     <div class="appmark"><img src="img/app.jpg" data-pageicon="ke-hoach" data-base="img/app.jpg" alt=""></div>
-    <div class="grow"><h1>Kế hoạch tháng</h1><p class="muted small">Khoản cố định và dự định mua · chưa vào báo cáo tới khi "đã trả"</p></div>
+    <div class="grow"><h1>Kế hoạch tháng</h1><p class="muted small">Tháng mới: bấm "Chép từ tháng trước" · chưa vào báo cáo tới khi "đã trả"</p></div>
   </div>
   <div class="monthbar" id="monthbar"></div>
   <div id="restBanner"></div>
@@ -403,7 +409,7 @@ details.cardbox > summary::-webkit-details-marker{display:none}
   </div>
   <div id="buys" class="stack"></div>
   <div class="row" style="gap:8px">
-    <button class="btn ghost grow" type="button" id="addItem">+ Khoản cố định</button>
+    <button class="btn ghost grow" type="button" id="addItem">+ Khoản mới</button>
     <button class="btn ghost grow" type="button" id="addBuy">+ Dự định mua</button>
   </div>
 </section>

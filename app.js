@@ -2,7 +2,7 @@
    Dữ liệu nằm trong máy (localStorage). Sao lưu: file SoChiTieu.json trên OneDrive (Lưu vào Tệp), giống app bánh bao.
    Không lưu số thẻ, CVV, OTP, số tài khoản. */
 'use strict';
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.1.0';
 
 /* ---------- tiện ích ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -81,9 +81,26 @@ const DEFAULT_ITEMS = [
   { id: 'thuoc', name: 'Thuốc Long Châu (ước tính)', sched: 'monthly', months: [], day: 0, method: 'eve', kind: 'thuoc', chan: 'online', group: 'Y tế – thuốc', hint: 500000, text: 'thuốc Long Châu' },
   { id: 'tiem', name: 'Tiêm chủng Long Châu', sched: 'once', months: [], day: 0, method: 'sup', kind: 'tiem', chan: 'quay', group: 'Y tế – thuốc', hint: 1000000, text: 'tiêm chủng Long Châu' },
   { id: 'vcb', name: 'Trả nợ Vietcombank', sched: 'monthly', months: [], day: 25, method: 'ck', kind: 'none', chan: 'online', group: 'Trả nợ', hint: 4000000, text: 'trả nợ vay ô tô Vietcombank' },
-  { id: 'hocphi', name: 'Học phí của con', sched: 'term', months: [], day: 0, method: 'ck', kind: 'none', chan: 'online', group: 'Con – học tập', hint: 0, text: 'học phí' }
+  { id: 'hocphi', name: 'Học phí của con', sched: 'once', months: [], day: 0, method: 'ck', kind: 'none', chan: 'online', group: 'Con – học tập', hint: 0, text: 'học phí' }
 ];
-const SCHED = { monthly: 'Hằng tháng', quarterly: 'Theo quý', once: 'Không lặp', term: 'Theo kỳ của trường' };
+// Quy luật lặp: "Chép từ tháng trước" lấy khoản theo tháng của tháng trước, theo quý của 3 tháng trước, theo năm của 12 tháng trước
+const SCHED = { monthly: 'Tháng', quarterly: 'Quý', yearly: 'Năm', once: 'Một lần' };
+const PERIOD = { monthly: 1, quarterly: 3, yearly: 12 };
+const monthsBetween = (a, b) => (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5) - +a.slice(5));
+// Đổi sang cách lưu mới: mỗi tháng chỉ có những khoản đã chép / đã thêm vào tháng đó
+function migratePlan(s) {
+  if (s.plan.v === 2) return;
+  const cur = monthKey(TODAY()), m = +cur.slice(5);
+  const ent = s.plan.entries[cur] = s.plan.entries[cur] || {};
+  for (const it of s.plan.items) {
+    if (it.sched === 'term') it.sched = 'once';
+    const activeNow = it.sched === 'monthly' || (it.sched === 'quarterly' && (it.months || []).includes(m));
+    if (it.sched === 'quarterly' && !it.anchor) { let mk = cur; for (let i = 0; i < 12 && !(it.months || []).includes(+mk.slice(5)); i++) mk = addMonths(mk, -1); it.anchor = mk; }
+    if (it.sched === 'monthly' && !it.anchor) it.anchor = cur;
+    if (activeNow && !ent[it.id]) ent[it.id] = { amt: 0, day: it.day || 0 };
+  }
+  s.plan.v = 2;
+}
 
 /* ---------- dữ liệu ---------- */
 const KEY = 'sct.v1';
@@ -104,9 +121,10 @@ function fixup(s) {
   s.cards = deepMerge(clone(DEFAULT_CARDS), s.cards);
   s.settings = deepMerge(clone(d.settings), s.settings);
   s.plan.items = s.plan.items || []; s.plan.entries = s.plan.entries || {}; s.plan.buys = s.plan.buys || [];
+  migratePlan(s);
   return s;
 }
-let S = (() => { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 1) return fixup(s); } catch (e) {} return seed(); })();
+let S = (() => { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 1) return fixup(s); } catch (e) {} const s = seed(); migratePlan(s); return s; })();
 function persist() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Không lưu được vào máy. Hãy Lưu lên OneDrive ngay.'); } }
 function save(cfg) { S.changedAt = nowIso(); if (cfg) S.cfgAt = S.changedAt; persist(); renderSyncDot(); }
 persist();
@@ -269,12 +287,11 @@ function rank(x, cards) {
 
 /* ---------- kế hoạch tháng ---------- */
 function rowsFor(mk) {
-  const m = +mk.slice(5), ent = S.plan.entries[mk] || {}, out = [];
+  const ent = S.plan.entries[mk] || {}, out = [];
   for (const it of S.plan.items) {
     const e = ent[it.id];
-    const active = it.sched === 'monthly' || (it.sched === 'quarterly' && (it.months || []).includes(m)) || ((it.sched === 'once' || it.sched === 'term') && e);
-    if (!active) continue;
-    const day = (e && e.day) || it.day || 0;
+    if (!e) continue;   // tháng chỉ có khoản đã chép / đã thêm
+    const day = (e.day != null ? e.day : it.day) || 0;
     out.push({ ref: `plan:${mk}:${it.id}`, mk, id: it.id, item: it, e, amt: e ? (e.amt || 0) : 0, day, date: dateIn(mk, day || 15),
       method: (e && e.method) || it.method, chosen: (e && e.method) || it.method, kind: it.kind, chan: it.chan || 'online', group: it.group, paid: !!(e && e.paid) });
   }
@@ -319,6 +336,39 @@ function entry(mk, id, create) {
 function lastAmount(id, mk) {
   for (let i = 1; i <= 12; i++) { const e = (S.plan.entries[addMonths(mk, -i)] || {})[id]; if (e && e.amt) return e.amt; }
   return 0;
+}
+// Tháng gần nhất (≤ mk) có khoản này; chưa có thì lấy tháng mốc của khoản
+function lastMonthOf(it, mk) {
+  for (let i = 0; i <= 24; i++) { const k = addMonths(mk, -i); if ((S.plan.entries[k] || {})[it.id]) return k; }
+  return it.anchor || null;
+}
+// Theo quy luật, khoản này có rơi vào tháng mk không (dùng để báo tháng nghỉ Dai-ichi)
+function occurs(it, mk) {
+  if ((S.plan.entries[mk] || {})[it.id]) return true;
+  const P = PERIOD[it.sched]; if (!P) return false;
+  const a = lastMonthOf(it, mk); if (!a) return false;
+  const d = monthsBetween(a, mk); return d > 0 && d % P === 0;
+}
+// "Chép từ tháng trước": tháng → tháng trước, quý → 3 tháng trước, năm → 12 tháng trước. Kèm số tiền, ngày, cách trả.
+function copyInto(mk) {
+  let n = 0;
+  const ent = S.plan.entries[mk] = S.plan.entries[mk] || {};
+  for (const it of S.plan.items) {
+    const P = PERIOD[it.sched];
+    if (!P || ent[it.id]) continue;
+    let src = (S.plan.entries[addMonths(mk, -P)] || {})[it.id];
+    if (!src && P > 1) {
+      // khoản quý/năm chưa có lịch sử trong app (VD Dai-ichi đóng trước khi dùng app): dựa vào tháng mốc
+      let recent = false;
+      for (let i = 1; i < P; i++) if ((S.plan.entries[addMonths(mk, -i)] || {})[it.id]) recent = true;
+      if (!recent && it.anchor && monthsBetween(it.anchor, mk) > 0 && monthsBetween(it.anchor, mk) % P === 0) src = { amt: 0, day: it.day };
+    }
+    if (!src) continue;
+    ent[it.id] = { amt: src.amt || 0, day: src.day != null ? src.day : (it.day || 0), method: src.method || null, updatedAt: nowIso() };
+    n++;
+  }
+  if (!Object.keys(ent).length) delete S.plan.entries[mk];
+  return n;
 }
 function markPaid(r, amount) {
   const amt = amount || r.amt || r.item.hint || 0;
@@ -560,14 +610,14 @@ function openTx(uid) {
    =================================================================== */
 let curMonth = monthKey(TODAY());
 const MONTHS = () => [0, 1, 2, 3].map(i => addMonths(monthKey(TODAY()), i));
-const isRestMonth = mk => { const q = S.plan.items.filter(i => i.sched === 'quarterly' && i.kind === 'baohiem'); return q.length > 0 && !q.some(i => (i.months || []).includes(+mk.slice(5))); };
+const isRestMonth = mk => { const q = S.plan.items.filter(i => i.sched === 'quarterly' && i.kind === 'baohiem'); return q.length > 0 && !q.some(i => occurs(i, mk)); };
 function renderMonthbar() {
   const ms = MONTHS();
   if (!ms.includes(curMonth)) curMonth = ms[0];
   $('#monthbar').innerHTML = ms.map((mk, i) => `<button type="button" data-k="${mk}" aria-pressed="${mk === curMonth}"><b>${mLabel(mk)}</b><span>${i === 0 ? 'tháng này' : '+' + i}${isRestMonth(mk) ? ' · nghỉ Dai-ichi' : ''}</span></button>`).join('');
 }
 function methodSelect(r) {
-  const opts = (r.item.sched === 'buy' ? ['sup', 'eve'] : ['auto', 'sup', 'eve', 'eco', 'ck', 'cash']).map(m => `<option value="${m}"${m === r.chosen ? ' selected' : ''}>${m === 'auto' ? 'Tự chọn: ' + (METHODS[r.method] ? METHODS[r.method].name : '') : METHODS[m].name}</option>`).join('');
+  const opts = (r.item.sched === 'buy' ? ['sup', 'eve'] : ['auto', 'sup', 'eve', 'eco', 'ck', 'cash']).map(m => `<option value="${m}"${m === r.chosen ? ' selected' : ''}>${m === 'auto' ? (r.chosen === 'auto' && METHODS[r.method] ? 'Tự chọn: ' + METHODS[r.method].name : 'Tự chọn') : METHODS[m].name}</option>`).join('');
   return `<select class="msel m-${r.method}" data-msel="${esc(r.ref)}" aria-label="Cách trả ${esc(r.item.name)}">${opts}</select>`;
 }
 function renderPlan() {
@@ -594,23 +644,24 @@ function renderPlan() {
     <p class="xs muted">Hoàn dự kiến ${fmt(se.est)}${se.cap ? ` / trần ${fmt(se.cap)}` : ''} · còn ${se.T >= R.high ? '0' : fmt(R.high - se.T)} đ tới mốc ${short(R.high)}${se.T < R.min && se.T > 0 ? ` · thiếu ${fmt(R.min - se.T)} đ để đạt ${short(R.min)}: dồn thêm tiêm chủng hoặc thuốc vào Supreme` : ''}${hasHosp ? ' · kỳ này có viện phí: không mua đồ lớn' : ''}</p>`;
   // dòng
   const el = $('#planRows');
-  if (!rows.length) { el.innerHTML = `<div class="empty small">Chưa có khoản nào trong tháng này.</div>`; }
+  if (!rows.length) { el.innerHTML = `<div class="empty small">${mLabel(mk)} chưa có khoản nào.<br>Bấm <b>Chép từ tháng trước</b>, hoặc chạm khoản bên dưới để thêm.</div>`; }
   else el.innerHTML = rows.map(r => {
     const g = rowGain(r), it = r.item;
     const amtVal = r.paid ? ((r.e && r.e.amt) || 0) : r.amt;
     const ph = lastAmount(r.id, mk) || it.hint || 0;
-    const dayTxt = r.buy ? `· mua trước ${dm(r.date)}` : r.day ? `· ngày ${r.day}` : '· trong tháng';
+    const ruleSel = r.buy ? '<span>Dự định mua</span>' : `<select class="rsel" data-rule="${esc(r.ref)}" aria-label="Quy luật lặp ${esc(it.name)}">${Object.entries(SCHED).map(([k, n]) => `<option value="${k}"${k === it.sched ? ' selected' : ''}>${n}</option>`).join('')}</select>`;
+    const dateBox = r.buy ? `<span>mua trước ${dm(r.date)}</span>` : `<input type="date" class="dsel" data-day="${esc(r.ref)}" min="${mk}-01" max="${dateIn(mk, 31)}" value="${r.day ? dateIn(mk, r.day) : ''}" aria-label="Ngày đóng ${esc(it.name)}"${r.paid ? ' disabled' : ''}>${r.day ? '' : '<span class="xs muted">trong tháng</span>'}`;
     return `<div class="prow">
       <div style="min-width:0"><button class="name" type="button" data-edit="${esc(r.id)}">${esc(it.name)}</button>
-        <div class="meta">${methodSelect(r)}<span>${r.buy ? 'Dự định mua' : SCHED[it.sched] || ''}</span><span>${dayTxt}</span>
-        <button class="paidbtn${r.paid ? ' on' : ''}" type="button" data-paid="${esc(r.ref)}">${r.paid ? '✓ đã trả' : 'Đã trả?'}</button></div>
+        <div class="meta">${methodSelect(r)}${ruleSel}</div>
+        <div class="meta">${dateBox}<button class="paidbtn${r.paid ? ' on' : ''}" type="button" data-paid="${esc(r.ref)}">${r.paid ? '✓ đã trả' : 'Đã trả?'}</button>${r.paid ? '' : `<button class="xbtn" type="button" data-rm="${esc(r.ref)}" aria-label="Bỏ ${esc(it.name)} khỏi tháng này">✕</button>`}</div>
         ${r.autoWhy ? `<div class="xs" style="color:var(--green);font-weight:600;margin-top:3px">${esc(r.autoWhy)}</div>` : it.note ? `<div class="xs muted" style="margin-top:3px">${esc(it.note)}</div>` : ''}</div>
       <div class="right"><input inputmode="numeric" aria-label="Số tiền ${esc(it.name)}" data-amt="${esc(r.ref)}" value="${amtVal ? fmt(amtVal) : ''}" placeholder="${ph ? fmt(ph) : 'số tiền'}"${r.paid || r.buy ? ' disabled' : ''}>
         ${g >= 1 ? `<span class="cbk num">~${fmt(g)}${r.amt ? '' : ' (nếu như lần trước)'}</span>` : `<span class="xs muted" style="text-align:right">${isCard(r.method) && r.method !== 'eco' ? 'trần đã đủ' : 'không hoàn'}</span>`}</div></div>`;
   }).join('');
-  // khoản không lặp
-  const onceItems = S.plan.items.filter(i => (i.sched === 'once' || i.sched === 'term') && !(S.plan.entries[mk] || {})[i.id]);
-  $('#onceChips').innerHTML = onceItems.length ? `<span class="xs muted">Khoản không lặp · chạm để thêm vào ${mLabel(mk)}</span><div class="chips">${onceItems.map(i => `<button class="chipbtn" type="button" data-once="${i.id}">+ ${esc(i.name)}</button>`).join('')}</div>` : '';
+  // thêm khoản chưa có trong tháng
+  const notIn = S.plan.items.filter(i => !(S.plan.entries[mk] || {})[i.id]);
+  $('#onceChips').innerHTML = notIn.length ? `<span class="xs muted">Thêm khoản vào ${mLabel(mk)} · chạm để thêm</span><div class="chips">${notIn.map(i => `<button class="chipbtn" type="button" data-once="${i.id}">+ ${esc(i.name)} <span class="muted xs">${SCHED[i.sched] || ''}</span></button>`).join('')}</div>` : '';
   renderBuys();
 }
 function findRow(ref) { return PROJ.find(r => r.ref === ref); }
@@ -618,6 +669,23 @@ $('#monthbar').addEventListener('click', e => { const b = e.target.closest('[dat
 $('#planRows').addEventListener('change', e => {
   const inp = e.target.closest('[data-amt]');
   if (inp) { const r = findRow(inp.dataset.amt); if (!r) return; const en = entry(r.mk, r.id, true); en.amt = digits(inp.value); en.updatedAt = nowIso(); save(true); renderAll(); return; }
+  const dsel = e.target.closest('[data-day]');
+  if (dsel) {
+    const r = findRow(dsel.dataset.day); if (!r) return;
+    const v = dsel.value, day = v ? +v.slice(8) : 0;
+    if (v && monthKey(v) !== r.mk) toast(`Đã lấy ngày ${day} cho ${mLabel(r.mk)}`);
+    const en = entry(r.mk, r.id, true); en.day = day; en.updatedAt = nowIso();
+    r.item.day = day;   // lần chép sau và khi thêm khoản này vào tháng khác sẽ dùng ngày mới
+    save(true); renderAll(); return;
+  }
+  const rsel = e.target.closest('[data-rule]');
+  if (rsel) {
+    const r = findRow(rsel.dataset.rule); if (!r) return;
+    r.item.sched = rsel.value; r.item.anchor = r.mk;
+    save(true); renderAll();
+    toast(rsel.value === 'once' ? `${r.item.name}: một lần, không chép sang tháng sau` : `${r.item.name}: lặp theo ${SCHED[rsel.value].toLowerCase()}, tính từ ${mLabel(r.mk)}`);
+    return;
+  }
   const sel = e.target.closest('[data-msel]');
   if (sel) {
     const r = findRow(sel.dataset.msel); if (!r) return;
@@ -635,18 +703,27 @@ $('#planRows').addEventListener('click', e => {
     else { const inp = $(`[data-amt="${CSS.escape(r.ref)}"]`); const amt = digits(inp && inp.value) || r.amt; if (markPaid(r, amt)) toast('Đã ghi vào sổ chi tiêu'); }
     renderAll(); return;
   }
+  const rm = e.target.closest('[data-rm]');
+  if (rm) {
+    const r = findRow(rm.dataset.rm); if (!r) return;
+    if (r.buy) { Object.assign(r.buy, { month: null, method: null, date: null }); }
+    else { delete S.plan.entries[r.mk][r.id]; if (!Object.keys(S.plan.entries[r.mk]).length) delete S.plan.entries[r.mk]; }
+    save(true); renderAll(); toast(`Đã bỏ ${r.item.name} khỏi ${mLabel(r.mk)}`); return;
+  }
   const ed = e.target.closest('[data-edit]');
   if (ed) { const id = ed.dataset.edit; if (id.startsWith('buy:')) openBuy(id.slice(4)); else openItem(id); }
 });
-$('#onceChips').addEventListener('click', e => { const b = e.target.closest('[data-once]'); if (!b) return; const en = entry(curMonth, b.dataset.once, true); en.amt = 0; en.updatedAt = nowIso(); save(true); renderAll(); });
+$('#onceChips').addEventListener('click', e => {
+  const b = e.target.closest('[data-once]'); if (!b) return;
+  const it = S.plan.items.find(i => i.id === b.dataset.once); if (!it) return;
+  const en = entry(curMonth, it.id, true); en.amt = 0; en.day = it.day || 0; en.updatedAt = nowIso();
+  if (!it.anchor || PERIOD[it.sched]) it.anchor = curMonth;
+  save(true); renderAll();
+});
 $('#copyPrev').addEventListener('click', () => {
-  const mk = curMonth; let n = 0;
-  for (const r of rowsFor(mk)) {
-    if (r.buy || r.paid || r.amt) continue;
-    const a = lastAmount(r.id, mk) || r.item.hint || 0;
-    if (a) { const en = entry(mk, r.id, true); en.amt = a; en.updatedAt = nowIso(); n++; }
-  }
-  save(true); renderAll(); toast(n ? `Đã điền ${n} khoản theo tháng trước` : 'Không còn ô trống để điền');
+  const n = copyInto(curMonth);
+  save(true); renderAll();
+  toast(n ? `Đã chép ${n} khoản vào ${mLabel(curMonth)} (kèm số tiền và ngày)` : 'Không có khoản nào cần chép: tháng trước trống, hoặc đã chép rồi');
 });
 
 /* dự định mua lớn */
@@ -705,13 +782,11 @@ $('#buys').addEventListener('click', e => {
 function openItem(id) {
   const it = id ? S.plan.items.find(i => i.id === id) : { id: '', name: '', sched: 'monthly', months: [], day: 0, method: 'sup', kind: 'khac', chan: 'online', group: 'Khác', hint: 0 };
   if (!it) return;
-  const q0 = it.sched === 'quarterly' && it.months && it.months.length ? ((it.months[0] - 1) % 3) + 1 : 1;
   $('#itemSheetIn').innerHTML = `<div class="grab"></div>
-    <div class="row between"><h2>${id ? 'Sửa khoản cố định' : 'Thêm khoản cố định'}</h2><button class="btn sm ghost" type="button" data-close>Đóng</button></div>
+    <div class="row between"><h2>${id ? 'Sửa khoản cố định' : 'Thêm khoản vào ' + mLabel(curMonth)}</h2><button class="btn sm ghost" type="button" data-close>Đóng</button></div>
     <div class="fgrid">
       <div class="field wide"><label for="iName">Tên khoản</label><input id="iName" value="${esc(it.name)}"></div>
-      <div class="field"><label for="iSched">Lịch lặp</label><select id="iSched">${Object.entries(SCHED).map(([k, n]) => `<option value="${k}"${k === it.sched ? ' selected' : ''}>${n}</option>`).join('')}</select></div>
-      <div class="field" id="iQWrap"><label for="iQ">Tháng đóng (theo quý)</label><select id="iQ">${[1, 2, 3].map(q => `<option value="${q}"${q === q0 ? ' selected' : ''}>${[q, q + 3, q + 6, q + 9].join(', ')}</option>`).join('')}</select></div>
+      <div class="field"><label for="iSched">Quy luật lặp</label><select id="iSched">${Object.entries(SCHED).map(([k, n]) => `<option value="${k}"${k === it.sched ? ' selected' : ''}>${n}</option>`).join('')}</select></div>
       <div class="field"><label for="iDay">Ngày đóng (0 = trong tháng)</label><input id="iDay" inputmode="numeric" value="${it.day || 0}"></div>
       <div class="field"><label for="iHint">Số tiền thường</label><input id="iHint" inputmode="numeric" value="${it.hint ? fmt(it.hint) : ''}"></div>
       <div class="field"><label for="iMethod">Cách trả gợi ý</label><select id="iMethod">${['auto', 'sup', 'eve', 'eco', 'ck', 'cash'].map(m => `<option value="${m}"${m === it.method ? ' selected' : ''}>${m === 'auto' ? 'App tự chọn thẻ' : METHODS[m].name}</option>`).join('')}</select></div>
@@ -721,16 +796,19 @@ function openItem(id) {
     </div>
     <button class="btn primary" type="button" id="iSave">Lưu</button>
     ${id ? '<button class="btn danger" type="button" id="iDel">Xóa khoản này khỏi kế hoạch</button>' : ''}`;
-  const syncQ = () => { $('#iQWrap').hidden = $('#iSched').value !== 'quarterly'; };
-  $('#iSched').onchange = syncQ; syncQ();
   $('#iHint').oninput = e => { const d = digits(e.target.value); e.target.value = d ? fmt(d) : ''; };
   $('#iSave').onclick = () => {
     const name = $('#iName').value.trim(); if (!name) { toast('Nhập tên khoản'); return; }
-    const q = +$('#iQ').value;
-    const data = { name, sched: $('#iSched').value, months: $('#iSched').value === 'quarterly' ? [q, q + 3, q + 6, q + 9] : [], day: Math.min(31, digits($('#iDay').value)), hint: digits($('#iHint').value), method: $('#iMethod').value, chan: $('#iChan').value, group: $('#iGroup').value, kind: $('#iKind').value, text: name };
+    const data = { name, sched: $('#iSched').value, day: Math.min(31, digits($('#iDay').value)), hint: digits($('#iHint').value), method: $('#iMethod').value, chan: $('#iChan').value, group: $('#iGroup').value, kind: $('#iKind').value, text: name };
     if (!isCard(data.method) && data.method !== 'auto') data.kind = 'none';
-    if (id) Object.assign(it, data); else S.plan.items.push(Object.assign({ id: 'i' + newUid() }, data));
-    save(true); closeSheets(); renderAll(); toast('Đã lưu khoản cố định');
+    if (id) { if (data.sched !== it.sched) data.anchor = curMonth; Object.assign(it, data); }
+    else {
+      // khoản mới: thêm luôn vào tháng đang xem, tháng sau "Chép" sẽ theo quy luật đã chọn
+      const nid = 'i' + newUid();
+      S.plan.items.push(Object.assign({ id: nid, anchor: curMonth }, data));
+      const en = entry(curMonth, nid, true); en.amt = data.hint || 0; en.day = data.day; en.updatedAt = nowIso();
+    }
+    save(true); closeSheets(); renderAll(); toast(id ? 'Đã lưu khoản cố định' : `Đã thêm vào ${mLabel(curMonth)}`);
   };
   if (id) { let arm = false; $('#iDel').onclick = e => { if (!arm) { arm = true; e.currentTarget.textContent = 'Bấm lần nữa để xóa'; return; } S.plan.items = S.plan.items.filter(i => i.id !== id); save(true); closeSheets(); renderAll(); toast('Đã xóa khoản'); }; }
   openSheet('itemSheet');
