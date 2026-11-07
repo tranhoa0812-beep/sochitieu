@@ -2,7 +2,7 @@
    Dữ liệu nằm trong máy (localStorage). Sao lưu: file SoChiTieu.json trên OneDrive (Lưu vào Tệp), giống app bánh bao.
    Không lưu số thẻ, CVV, OTP, số tài khoản. */
 'use strict';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 
 /* ---------- tiện ích ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -128,6 +128,13 @@ function cashPeriod(card, date) {
   if (card === 'sup') return stmtPeriod('sup', date);
   const mk = monthKey(date);
   return { card, key: `${card}:${mk}`, start: `${mk}-01`, end: dateIn(mk, 31), mk };
+}
+// Ngày phải trả của một kỳ sao kê: ngày đến hạn đầu tiên SAU ngày chốt.
+// VD chốt 05, hạn 20 → cùng tháng (chốt 05/11, trả 20/11); chốt 20, hạn 05 → tháng sau (chốt 20/11, trả 05/12).
+function dueOf(p, dueDay) {
+  const mk = monthKey(p.end);
+  const same = dateIn(mk, dueDay);
+  return same > p.end ? same : dateIn(addMonths(mk, 1), dueDay);
 }
 const shiftPeriod = (p, n) => p.card === 'sup' ? stmtPeriod('sup', n < 0 ? addDays(p.start, -1) : addDays(p.end, 1)) : cashPeriod(p.card, n < 0 ? addDays(p.start, -1) : addDays(p.end, 1));
 const pLabel = p => `${dm(p.start)}–${dm(p.end)}`;
@@ -783,8 +790,7 @@ function reminders() {
   for (const c of ['sup', 'eve']) {
     const cd = S.cards[c];
     const last = stmtPeriod(c, addDays(stmtPeriod(c, today).start, -1));
-    const dueMk = addMonths(monthKey(last.end), cd.dueDay <= +last.end.slice(8) ? 1 : 0);
-    const due = dateIn(dueMk, cd.dueDay);
+    const due = dueOf(last, cd.dueDay);
     const n = daysBetween(today, due);
     const bal = S.tx.filter(t => t.method === c && t.date >= last.start && t.date <= last.end).reduce((s, t) => s + t.amount, 0);
     if (n >= 0 && n <= 5 && bal > 0) out.push({ w: true, t: `<b>Hạn trả ${METHODS[c].name} ${dm(due)}</b> (còn ${n} ngày): trả đủ ${fmt(bal)} đ của kỳ ${pLabel(last)} để tránh lãi 33–36%/năm.` });
@@ -943,7 +949,7 @@ function renderRules() {
   const open = $('#cardBoxes').dataset.open || 'sup';
   $('#cardBoxes').innerHTML = ['sup', 'eve', 'eco'].map(c => {
     const cd = S.cards[c], info = CARD_INFO[c];
-    const f = c === 'eco' ? [['openDate', 'Ngày mở thẻ', 'month']] : [['limit', 'Hạn mức', 'money'], ['closeDay', 'Ngày chốt sao kê', 'day'], ['dueDay', 'Ngày đến hạn (tháng sau)', 'day'], ['openDate', 'Ngày mở thẻ', 'month'], ['fee', 'Phí thường niên', 'money'], ['feeWaive', 'Chi để miễn phí (năm)', 'money']];
+    const f = c === 'eco' ? [['openDate', 'Ngày mở thẻ', 'month']] : [['limit', 'Hạn mức', 'money'], ['closeDay', 'Ngày chốt sao kê', 'day'], ['dueDay', 'Ngày đến hạn thanh toán', 'day'], ['openDate', 'Ngày mở thẻ', 'month'], ['fee', 'Phí thường niên', 'money'], ['feeWaive', 'Chi để miễn phí (năm)', 'money']];
     const ex = c === 'sup' ? `Loại trừ: nạp ví, rút tiền mặt, phí, lãi, trả góp, Bill Payment của Shinhan. Thể lệ: ${S.rules.sup.expiry ? 'hết hạn ' + dmy(S.rules.sup.expiry) : 'chưa thấy ngày hết hạn'}.`
       : c === 'eve' ? `Loại trừ: nạp ví, rút tiền, phí, lãi, trả góp; có thể loại trừ tiện ích 4900, dịch vụ số 5734, 5815–5818. Thể lệ OneU hết hạn ${S.rules.eve.expiry ? dmy(S.rules.eve.expiry) : '—'}.`
       : 'Dùng khi có voucher, hoặc thay tiền mặt cho khoản nhỏ.';
@@ -951,7 +957,8 @@ function renderRules() {
       <summary><div class="bankcard ${c}"><div class="chip"></div><div><div class="nm">${info.name}</div><div class="ty">${info.type}</div></div><span class="upd">cập nhật ${dmy(S.rules[c].updated)}</span></div></summary>
       <div class="cardbody">
         <div class="fgrid">${f.map(([k, l, t]) => `<div class="field"><label for="cf-${c}-${k}">${l}</label><input id="cf-${c}-${k}" data-cf="${c}:${k}:${t}" ${t === 'month' ? 'type="month"' : 'inputmode="numeric"'} value="${t === 'money' ? (cd[k] ? fmt(cd[k]) : '') : (cd[k] || '')}"></div>`).join('')}</div>
-        ${c !== 'eco' ? `<button class="btn sm primary" type="button" data-cfsave="${c}">Lưu thông tin thẻ</button>` : ''}
+        ${c !== 'eco' ? `<p class="small" data-cfhint="${c}" style="padding:9px 11px;border-radius:12px;background:var(--surface-2)">${dueHint(c, cd.closeDay, cd.dueDay)}</p>
+        <button class="btn sm primary" type="button" data-cfsave="${c}">Lưu thông tin thẻ</button>` : ''}
         <table class="rates"><tbody>${rateRows(c).map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}</tbody></table>
         <p class="small muted">${ex}</p>
       </div></details>`;
@@ -967,7 +974,24 @@ function renderRules() {
   renderSyncInfo();
 }
 $('#cardBoxes').addEventListener('toggle', e => { const d = e.target.closest('details[data-card]'); if (d && d.open) $('#cardBoxes').dataset.open = d.dataset.card; }, true);
-$('#cardBoxes').addEventListener('input', e => { const i = e.target.closest('[data-cf]'); if (!i) return; const t = i.dataset.cf.split(':')[2]; if (t === 'money') { const d = digits(i.value); i.value = d ? fmt(d) : ''; } if (t === 'day') i.value = String(Math.min(31, digits(i.value)) || ''); });
+// Dòng kiểm tra: kỳ sao kê gần nhất và ngày phải trả, tính theo số đang gõ (chưa cần bấm Lưu)
+function dueHint(c, closeDay, dueDay) {
+  if (!closeDay || !dueDay) return 'Nhập ngày chốt và ngày đến hạn để xem kỳ sao kê.';
+  const saved = S.cards[c].closeDay; S.cards[c].closeDay = closeDay;
+  const cur = stmtPeriod(c, TODAY()), last = stmtPeriod(c, addDays(cur.start, -1));
+  S.cards[c].closeDay = saved;
+  const d1 = dueOf(last, dueDay), d2 = dueOf(cur, dueDay);
+  const sameMonth = monthKey(d1) === monthKey(last.end);
+  return `Kỳ ${dmy(last.start)}–${dmy(last.end)} → hạn trả <b>${dmy(d1)}</b><br>Kỳ ${dmy(cur.start)}–${dmy(cur.end)} → hạn trả <b>${dmy(d2)}</b><br><span class="muted">Hạn trả rơi vào ${sameMonth ? 'cùng tháng với' : 'tháng sau'} ngày chốt. Đúng với sao kê thì bấm Lưu.</span>`;
+}
+$('#cardBoxes').addEventListener('input', e => {
+  const i = e.target.closest('[data-cf]'); if (!i) return;
+  const [c, , t] = i.dataset.cf.split(':');
+  if (t === 'money') { const d = digits(i.value); i.value = d ? fmt(d) : ''; }
+  if (t === 'day') i.value = String(Math.min(31, digits(i.value)) || '');
+  const h = $(`[data-cfhint="${c}"]`);
+  if (h) h.innerHTML = dueHint(c, digits(($(`[data-cf="${c}:closeDay:day"]`) || {}).value), digits(($(`[data-cf="${c}:dueDay:day"]`) || {}).value));
+});
 $('#cardBoxes').addEventListener('change', e => { const i = e.target.closest('[data-cf]'); if (!i) return; const [c, k, t] = i.dataset.cf.split(':'); if (c === 'eco') { S.cards.eco[k] = i.value; save(true); } });
 $('#cardBoxes').addEventListener('click', e => {
   const b = e.target.closest('[data-cfsave]'); if (!b) return;
