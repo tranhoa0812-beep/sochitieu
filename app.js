@@ -2,7 +2,7 @@
    Dữ liệu nằm trong máy (localStorage). Sao lưu: file SoChiTieu.json trên OneDrive (Lưu vào Tệp), giống app bánh bao.
    Không lưu số thẻ, CVV, OTP, số tài khoản. */
 'use strict';
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 
 /* ---------- tiện ích ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -66,9 +66,10 @@ const DEFAULT_RULES = {
   eco: { updated: '2026-11-07' },
   inspire: { expiry: '2027-03-10' }
 };
+// Ngày chốt / hạn trả Jasmine báo (07/11/2026): Supreme chốt 5 trả 20 cùng tháng · Everyday chốt 20 trả 5 tháng sau
 const DEFAULT_CARDS = {
-  sup: { limit: 0, closeDay: 20, dueDay: 5, openDate: '', fee: 550000, feeWaive: 55e6, confirmed: false },
-  eve: { limit: 0, closeDay: 25, dueDay: 15, openDate: '', fee: 599000, feeWaive: 150e6, confirmed: false },
+  sup: { limit: 0, closeDay: 5, dueDay: 20, openDate: '', fee: 550000, feeWaive: 55e6, confirmed: true },
+  eve: { limit: 0, closeDay: 20, dueDay: 5, openDate: '', fee: 599000, feeWaive: 150e6, confirmed: true },
   eco: { openDate: '', confirmed: true }
 };
 const DEFAULT_ITEMS = [
@@ -123,6 +124,12 @@ function fixup(s) {
   s.settings = deepMerge(clone(d.settings), s.settings);
   s.plan.items = s.plan.items || []; s.plan.entries = s.plan.entries || {}; s.plan.buys = s.plan.buys || [];
   migratePlan(s);
+  // bản 1.4.0: ghi ngày chốt/hạn trả thật của hai thẻ một lần (Jasmine đổi được ở trang Nguyên tắc)
+  if (!s.cardDays2) {
+    Object.assign(s.cards.sup, { closeDay: 5, dueDay: 20, confirmed: true });
+    Object.assign(s.cards.eve, { closeDay: 20, dueDay: 5, confirmed: true });
+    s.cardDays2 = true; s.cfgAt = nowIso();
+  }
   return s;
 }
 let S = (() => { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 1) return fixup(s); } catch (e) {} const s = seed(); migratePlan(s); return s; })();
@@ -171,7 +178,7 @@ function parseAmount(s) {
   if (m) return { v: WORDNUM[m[1]] * (m[2] === 'chục' ? 10000 : 100000), raw: m[0] };
   return null;
 }
-// [từ khóa, nhóm, loại hoàn, cách: 'swipe' | 'ck' | 'ask', kênh]
+// [từ khóa, nhóm, loại hoàn, cách: 'swipe' | 'ck' | 'cash' | 'ask', kênh]
 const RULES = [
   [['điện máy xanh', 'thế giới di động', 'tgdd', 'fpt shop', 'nguyễn kim', 'tủ lạnh', 'máy giặt', 'điều hòa', 'tivi', 'laptop', 'điện thoại mới'], 'Mua sắm', 'dienmay', 'swipe', 'quay'],
   [['shopee', 'tiktok', 'tiktok shop', 'lazada', 'tiki'], null, 'tmdt', 'swipe', 'online'],
@@ -189,6 +196,7 @@ const RULES = [
   [['học phí', 'sách vở', 'năng khiếu', 'học thêm'], 'Con – học tập', 'none', 'ck'],
   [['làm bánh', 'nguyên liệu', 'bao bì', 'bột', 'hộp bánh', 'túi bánh'], BIZ, 'none', 'ck'],
   [['sữa', 'bỉm', 'tã', 'đồ chơi'], 'Con – sinh hoạt', 'khac', 'ask', 'quay'],
+  [['chợ cóc'], 'Đi chợ – siêu thị', 'none', 'cash'],
   [['chợ', 'rau', 'thịt', 'cá', 'trứng', 'hoa quả', 'trái cây'], 'Đi chợ – siêu thị', 'none', 'ck'],
   [['bánh mì', 'cà phê', 'cafe', 'phở', 'bún', 'cơm', 'quán', 'trà sữa', 'trà đá', 'trà chanh', 'ăn sáng', 'ăn trưa', 'ăn tối', 'xôi', 'bánh cuốn'], 'Ăn uống ngoài', 'none', 'ck'],
   [['nước', 'internet', 'mạng', 'wifi', 'gas', 'cước'], 'Hóa đơn nhà', 'none', 'ck'],
@@ -226,8 +234,10 @@ let PROJ = [];
 function spendsIn(card, p, opt) {
   opt = opt || {};
   let list = txSpends();
-  // kế hoạch chỉ tính phần CHƯA thấy trong sổ (remain), nên khoản đã ghi thật không bị cộng trùng
-  if (opt.plan) list = list.concat(PROJ.filter(r => r.remain > 0 && isCard(r.method)).map(r => ({ date: r.date, amt: r.remain, method: r.method, kind: r.kind, chan: r.chan, inst: !!r.inst, ref: r.ref })));
+  // kế hoạch chỉ tính phần CHƯA thấy trong sổ (remain), nên khoản đã ghi thật không bị cộng trùng.
+  // opt.cut: khoản đang gõ (chưa lưu) lấp vào dòng kế hoạch nào → trừ trước phần đó, không cộng trùng.
+  const cut = opt.cut;
+  if (opt.plan) list = list.concat(PROJ.filter(r => isCard(r.method)).map(r => ({ date: r.date, amt: r.remain - (cut && cut.ref === r.ref ? cut.amt : 0), method: r.method, kind: r.kind, chan: r.chan, inst: !!r.inst, ref: r.ref })).filter(x => x.amt > 0));
   return list.filter(x => x.method === card && x.date >= p.start && x.date <= p.end && x.ref !== opt.exclude);
 }
 function supRate(kind) { const R = S.rules.sup; return R.rates[kind] != null ? R.rates[kind] : R.base; }
@@ -253,7 +263,7 @@ const estFor = (card, list) => card === 'sup' ? supEst(list) : card === 'eve' ? 
 // Tiền hoàn thêm nếu trả khoản x bằng thẻ `card` (đã tính khoản kế hoạch, trần, mốc, phí ngoại tệ)
 function gain(card, x) {
   const p = cashPeriod(card, x.date);
-  const base = spendsIn(card, p, { plan: true, exclude: x.ref });
+  const base = spendsIn(card, p, { plan: true, exclude: x.ref, cut: x.cut });
   const a = estFor(card, base), b = estFor(card, base.concat([Object.assign({ method: card }, x)]));
   const fee = x.kind === 'sub_usd' && card !== 'eco' ? x.amt * (S.rules[card].fx || 0) : 0;
   return { m: card, p, a, b, cash: b.est - a.est - fee, fee };
@@ -304,10 +314,28 @@ function rowsFor(mk) {
   }
   return out;
 }
-/* ---------- tự khớp khoản thật (Nhập liệu / sao kê) với khoản kế hoạch cùng tháng ----------
+/* ---------- tự khớp khoản thật (Nhập liệu / sao kê) với khoản kế hoạch ----------
+   Mỗi dòng kế hoạch là một "chỗ giữ trước"; khoản thật vào thì lấp chỗ đó, app chỉ tính chỗ còn trống.
    Khoản có nhóm hoàn rõ (bảo hiểm, tiền điện, Shopee, siêu thị, thuốc…) khớp theo nhóm hoàn.
    Khoản chuyển khoản / khác khớp theo tên (VD "Vietcombank"), hoặc cùng nhóm chi và số tiền gần bằng.
-   Mỗi khoản thật chỉ khớp 1 dòng; dòng ước tính (Shopee…) cộng dồn nhiều khoản. */
+   Hai kiểu dòng (tự suy từ ô ngày đóng, không cần hỏi):
+   - Hóa đơn (có ngày đóng, hoặc Quý/Năm/Một lần, Dự định mua): trả 1 lần là xong, nhận 1 khoản thật,
+     khớp được cả khoản trả sớm/muộn trong ±15 ngày quanh ngày đóng (ưu tiên cùng tháng).
+   - Ước tính (theo tháng, không có ngày: Shopee, WinMart, thuốc): cộng dồn nhiều khoản trong tháng. */
+const isBill = r => !!r.buy || r.item.sched !== 'monthly' || (r.day || 0) > 0;
+const NEAR_DAYS = 15;
+// dòng r có nhận khoản thật t không (ngày + loại); `filled`: hóa đơn đã có khoản thật thì không nhận thêm
+function fitsRow(r, t, filled) {
+  if (!matchesRow(r, t)) return false;
+  const same = monthKey(t.date) === r.mk;
+  if (!isBill(r)) return same;
+  if (filled) return false;
+  return same || (r.day > 0 && Math.abs(daysBetween(r.date, t.date)) <= NEAR_DAYS);
+}
+// chọn dòng hợp nhất: cùng tháng trước, rồi số tiền còn trống gần với khoản thật nhất
+function bestRow(c, t) {
+  return c.sort((a, b) => ((monthKey(t.date) === b.mk) - (monthKey(t.date) === a.mk)) || (Math.abs(planOf(a) - a.actual - t.amount) - Math.abs(planOf(b) - b.actual - t.amount)))[0];
+}
 const STOP = new Set(['hop', 'dong', 'tien', 'tra', 'cua', 'con', 'uoc', 'tinh', 'nop', 'mua', 'thang', 'phi', 'khoan']);
 const nameTokens = s => unaccent(norm(s)).replace(/\(.*?\)/g, ' ').split(/[\s–\-+]+/).filter(w => w.length >= 3 && !STOP.has(w));
 const planOf = r => r.amt || r.item.hint || 0;
@@ -320,19 +348,33 @@ function matchesRow(r, t) {
   return !!p && t.group === r.group && t.amount >= p * .5 && t.amount <= p * 1.5;
 }
 function matchActuals(rows) {
-  const byMonth = {};
-  rows.forEach(r => { r.actual = 0; r.txs = []; (byMonth[r.mk] = byMonth[r.mk] || []).push(r); });
-  for (const mk of Object.keys(byMonth)) {
-    const rs = byMonth[mk];
-    for (const t of S.tx.filter(x => monthKey(x.date) === mk).sort((a, b) => b.amount - a.amount)) {
-      const c = rs.filter(r => matchesRow(r, t));
+  rows.forEach(r => { r.actual = 0; r.txs = []; });
+  if (rows.length) {
+    const from = addDays(rows.reduce((m, r) => r.date < m ? r.date : m, rows[0].date).slice(0, 8) + '01', -NEAR_DAYS);
+    const to = addDays(dateIn(monthKey(rows.reduce((m, r) => r.date > m ? r.date : m, rows[0].date)), 31), NEAR_DAYS);
+    const txs = S.tx.filter(x => x.date >= from && x.date <= to).sort((a, b) => (b.amount - a.amount) || a.date.localeCompare(b.date));
+    for (const t of txs) {
+      const c = rows.filter(r => fitsRow(r, t, r.txs.length > 0));
       if (!c.length) continue;
-      c.sort((a, b) => Math.abs(planOf(a) - a.actual - t.amount) - Math.abs(planOf(b) - b.actual - t.amount));
-      c[0].actual += t.amount; c[0].txs.push(t.uid);
+      const r = bestRow(c, t);
+      r.actual += t.amount; r.txs.push(t.uid);
     }
   }
   const cur = monthKey(TODAY());
-  rows.forEach(r => { r.past = r.mk < cur; r.remain = r.past ? 0 : Math.max(0, r.amt - r.actual); r.done = r.actual > 0 && r.actual >= planOf(r) * .9; });
+  rows.forEach(r => {
+    r.past = r.mk < cur;
+    // hóa đơn đã có khoản thật → xong, không còn "phần dư" (trả 5,2tr cho kế hoạch 5,4tr vẫn là xong)
+    r.remain = r.past ? 0 : isBill(r) && r.actual > 0 ? 0 : Math.max(0, r.amt - r.actual);
+    r.done = r.actual > 0 && (isBill(r) || r.actual >= planOf(r) * .9);
+  });
+}
+// Khoản đang gõ ở Nhập liệu sẽ lấp dòng kế hoạch nào (còn chỗ trống). Trả về { r, cut } hoặc null.
+function findPlanRow(t) {
+  if (!t.amount) return null;
+  const c = PROJ.filter(r => r.remain > 0 && fitsRow(r, t, isBill(r) && r.txs.length > 0));
+  if (!c.length) return null;
+  const r = bestRow(c, t);
+  return { r, cut: { ref: r.ref, amt: isBill(r) ? r.remain : Math.min(t.amount, r.remain) } };
 }
 function buildProjection() {
   const base = monthKey(TODAY());
@@ -440,21 +482,44 @@ function fromText() {
   $('#fGroup').value = st.group;
   renderSuggest();
 }
-function composerX() { return { date: $('#fDate').value || TODAY(), amt: st.amount, kind: st.kind, chan: st.chan }; }
-function renderSuggest() {
+// Khoản đang gõ, dạng giống khoản sẽ lưu, để tìm dòng kế hoạch nó lấp vào (HIT)
+let HIT = null;
+function composerTx() {
+  const swipe = st.mode === 'swipe' || st.ask === 'swipe';
+  return { date: $('#fDate').value || TODAY(), amount: st.amount, note: ($('#fNote').value || '').trim(), group: $('#fGroup').value, kind: swipe ? (st.kind === 'none' ? 'khac' : st.kind) : 'none' };
+}
+function composerX() { const x = { date: $('#fDate').value || TODAY(), amt: st.amount, kind: st.kind, chan: st.chan }; if (HIT) x.cut = HIT.cut; return x; }
+function planHitLine() {
+  if (!HIT) return '';
+  const r = HIT.r, name = esc(r.item.name.replace(/\s*\(ước tính\)/, ''));
+  return `<div class="second plan-hit"><span class="ok">✓</span> Khớp kế hoạch: <b>${name}</b>${isBill(r) ? ` (${short(planOf(r))}) · không tính trùng` : ` · sau khoản này còn ${short(Math.max(0, r.remain - HIT.cut.amt))} ước tính`}</div>`;
+}
+// Dòng "App hiểu: số tiền · nhóm · ngày" thay cho 4 ô; app tách sai thì bấm ✎ Sửa mới mở 4 ô
+function renderSum() {
+  const has = !!$('#q').value.trim();
+  $('#sumLine').hidden = !has;
+  if (!has) { $('#parsedBox').hidden = true; $('#sumEdit').setAttribute('aria-expanded', 'false'); return; }
+  const d = $('#fDate').value || TODAY();
+  $('#sumText').innerHTML = '<span class="muted">App hiểu:</span> ' + [st.amount ? `<b class="num">${fmt(st.amount)} đ</b>` : '<b style="color:var(--warn)">chưa có số tiền</b>', esc($('#fGroup').value), d === TODAY() ? 'hôm nay' : dm(d)].join(' · ');
+}
+function renderSuggest() { suggestInner(); renderSum(); }
+function suggestInner() {
   const box = $('#suggestBox');
   const swipe = st.mode === 'swipe' || st.ask === 'swipe';
   $('#chanWrap').hidden = !swipe;
   $$('#chan button').forEach(b => b.setAttribute('aria-pressed', b.dataset.c === st.chan));
   const pick = m => { if (!st.manualMethod) setMethod(m); };
+  HIT = null;
   if (!$('#q').value.trim() && !st.amount) { box.innerHTML = ''; pick('ck'); return; }
   if ((st.mode === 'ask' || st.mode === 'unknown') && !st.ask) {
     box.innerHTML = `<div class="suggest plain"><b>Khoản này quẹt thẻ hay chuyển khoản?</b><div class="ask"><button class="btn sm primary" type="button" data-ans="swipe">Quẹt thẻ</button><button class="btn sm" type="button" data-ans="ck">Chuyển khoản/QR</button><button class="btn sm" type="button" data-ans="cash">Tiền mặt</button></div></div>`;
     pick('ck'); return;
   }
+  HIT = findPlanRow(composerTx());
   if (!swipe) {
-    const m = st.ask === 'cash' ? 'cash' : 'ck';
-    box.innerHTML = `<div class="suggest plain"><div class="row"><span class="sticker sm"><img src="${img(METHODS[m].img)}" alt=""></span><span class="grow small"><b>${m === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'} – không hoàn tiền</b><br><span class="muted">Chỉ ghi sổ, không gợi ý thẻ.</span></span></div></div>`;
+    // chợ cóc… chỉ nhận tiền mặt (mode 'cash')
+    const m = st.ask === 'cash' || st.mode === 'cash' ? 'cash' : 'ck';
+    box.innerHTML = `<div class="suggest plain"><div class="row"><span class="sticker sm"><img src="${img(METHODS[m].img)}" alt=""></span><span class="grow small"><b>${m === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'} – không hoàn tiền</b><br><span class="muted">Chỉ ghi sổ, không gợi ý thẻ.</span></span></div>${planHitLine()}</div>`;
     pick(m); return;
   }
   if (!st.amount) { box.innerHTML = `<div class="suggest plain small">Nhập số tiền để app gợi ý thẻ.</div>`; return; }
@@ -469,7 +534,7 @@ function renderSuggest() {
     <div class="best"><span class="sticker"><img src="${img('coins')}" alt=""></span>
       <div class="grow"><div class="small muted">Nên dùng</div><div class="row wrap" style="gap:8px">${pill(b.m)}<span class="small">${esc(b.why)}</span></div></div>
       <div style="text-align:right"><div class="cb num">${b.cash >= 1 ? '+' + fmt(b.cash) : '0'}</div><div class="xs muted">hoàn dự kiến</div></div></div>
-    <div class="second">Thứ 2: <b>${METHODS[s2.m].name}</b> ${s2.cash >= 1 ? '+' + fmt(s2.cash) + ' đ' : '0 đ'} · ${esc(s2.why)}</div>${extra}</div>`;
+    <div class="second">Thứ 2: <b>${METHODS[s2.m].name}</b> ${s2.cash >= 1 ? '+' + fmt(s2.cash) + ' đ' : '0 đ'} · ${esc(s2.why)}</div>${extra}${planHitLine()}</div>`;
   pick(b.m);
 }
 function setMethod(m) { st.method = m; $$('#methods button').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === m)); }
@@ -477,8 +542,9 @@ function setMethod(m) { st.method = m; $$('#methods button').forEach(b => b.setA
 $('#q').addEventListener('input', fromText);
 $('#fAmt').addEventListener('input', e => { const d = digits(e.target.value); st.amount = d; e.target.value = d ? fmt(d) : ''; renderSuggest(); });
 $('#fDate').addEventListener('change', renderSuggest);
-$('#fGroup').addEventListener('change', e => { st.group = e.target.value; });
-$('#fNote').addEventListener('input', e => { st.note = e.target.value; });
+$('#fGroup').addEventListener('change', e => { st.group = e.target.value; renderSuggest(); });
+$('#fNote').addEventListener('input', e => { st.note = e.target.value; renderSuggest(); });
+$('#sumEdit').addEventListener('click', e => { const p = $('#parsedBox'); p.hidden = !p.hidden; e.currentTarget.setAttribute('aria-expanded', String(!p.hidden)); });
 $('#chan').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; st.chan = b.dataset.c; renderSuggest(); });
 $('#methods').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; st.manualMethod = true; setMethod(b.dataset.m); });
 $('#suggestBox').addEventListener('click', e => { const b = e.target.closest('[data-ans]'); if (!b) return; st.ask = b.dataset.ans; if (st.ask === 'swipe' && st.kind === 'none') st.kind = 'khac'; renderSuggest(); });
@@ -489,22 +555,36 @@ $('#saveBtn').addEventListener('click', () => {
   const swipe = st.mode === 'swipe' || st.ask === 'swipe';
   const kind = isCard(st.method) ? (st.kind === 'none' ? 'khac' : st.kind) : 'none';
   const t = { uid: newUid(), date, time: nowTime(), note: ($('#fNote').value || '').trim() || 'Khoản chi', amount: st.amount, group: $('#fGroup').value, method: st.method, kind, chan: swipe ? st.chan : 'quay', source: 'manual', updatedAt: nowIso() };
-  t.cb = isCard(t.method) ? Math.max(0, Math.round(gain(t.method, { date, amt: t.amount, kind: t.kind, chan: t.chan }).cash)) : 0;
+  // khoản này lấp dòng kế hoạch nào thì trừ dòng đó ra khi tính hoàn, không cộng trùng
+  const hit = findPlanRow(t);
+  t.cb = isCard(t.method) ? Math.max(0, Math.round(gain(t.method, { date, amt: t.amount, kind: t.kind, chan: t.chan, cut: hit && hit.cut }).cash)) : 0;
   S.tx.push(t); save();
   $('#q').value = ''; $('#fDate').value = TODAY(); fromText();
   renderAll();
   toast(t.cb ? `Đã lưu · hoàn dự kiến +${fmt(t.cb)} đ` : 'Đã lưu khoản chi');
 });
 
-/* nút nhanh khoản cố định */
+/* nút nhanh: 4 icon chỗ hay mua (luôn hiện) + "Cố định tháng này" (ẩn sau nút) */
+const BRANDS = [
+  { id: 'win', label: 'WinMart+', text: 'WinMart+ ', svg: `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="2" y="2" width="60" height="60" rx="18" fill="#E5262D"/><text x="31" y="40" text-anchor="middle" font-family="'Baloo 2',sans-serif" font-weight="800" font-size="30" fill="#fff">W</text><circle cx="48" cy="17" r="6" fill="#fff"/><path d="M48 14v6M45 17h6" stroke="#E5262D" stroke-width="2.4" stroke-linecap="round"/><path d="M23 46q8 6 16 0" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="16" cy="44" r="3" fill="#FF8A8F"/><circle cx="46" cy="44" r="3" fill="#FF8A8F"/></svg>` },
+  { id: 'thuoc', label: 'Long Châu', text: 'thuốc Long Châu ', svg: `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="2" y="2" width="60" height="60" rx="18" fill="#1D2C7A"/><rect x="15" y="15" width="10" height="22" rx="5" fill="#2E8BEA" transform="rotate(18 20 26)"/><rect x="27" y="12" width="10" height="25" rx="5" fill="#F47A20" transform="rotate(18 32 24.5)"/><rect x="39" y="15" width="10" height="22" rx="5" fill="#3DB54A" transform="rotate(18 44 26)"/><path d="M25 46q7 6 14 0" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="18" cy="46" r="3" fill="#F8A3B4"/><circle cx="46" cy="46" r="3" fill="#F8A3B4"/></svg>` },
+  { id: 'shopee', label: 'Shopee', text: 'Shopee ', svg: `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="2" y="2" width="60" height="60" rx="18" fill="#FFF0E8"/><path d="M24 23v-4a8 8 0 0 1 16 0v4" fill="none" stroke="#EE4D2D" stroke-width="3.6" stroke-linecap="round"/><path d="M14 23h36l-3 27a5 5 0 0 1-5 4.5H22a5 5 0 0 1-5-4.5z" fill="#EE4D2D"/><circle cx="26" cy="34" r="2.6" fill="#fff"/><circle cx="38" cy="34" r="2.6" fill="#fff"/><path d="M27 41q5 5 10 0" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round"/><circle cx="21" cy="40" r="2.6" fill="#FFB199"/><circle cx="43" cy="40" r="2.6" fill="#FFB199"/></svg>` },
+  // chợ cóc chỉ nhận tiền mặt: không gợi ý thẻ
+  { id: null, label: 'Chợ cóc', text: 'chợ cóc ', cash: true, svg: `<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="2" y="2" width="60" height="60" rx="18" fill="#E5F2D8"/><path d="M26 59q0-13 6-15q6 2 6 15z" fill="#D9446A"/><circle cx="32" cy="33" r="6.5" fill="#FFE0C2"/><circle cx="29.6" cy="34" r="1.1" fill="#5A3B2A"/><circle cx="34.4" cy="34" r="1.1" fill="#5A3B2A"/><circle cx="27.8" cy="36.6" r="1.5" fill="#F7A3A3"/><circle cx="36.2" cy="36.6" r="1.5" fill="#F7A3A3"/><path d="M30.6 37.2q1.4 1.3 2.8 0" fill="none" stroke="#5A3B2A" stroke-width="1" stroke-linecap="round"/><path d="M18 30L32 11L46 30Q32 33.5 18 30z" fill="#EBD394" stroke="#B8954F" stroke-width="1.2" stroke-linejoin="round"/><path d="M24.5 23.5q7.5-1.6 15 0M21.5 27.5q10.5-1.8 21 0" fill="none" stroke="#C9A85F" stroke-width="1"/><path d="M6 45Q32 38 58 45" fill="none" stroke="#8A5A2B" stroke-width="2.6" stroke-linecap="round"/><path d="M8 44.5l-3 6M8 44.5l9 6M56 44.5l-9 6M56 44.5l3 6" stroke="#8A5A2B" stroke-width="1.1"/><circle cx="7.5" cy="49" r="3.2" fill="#F2A33A"/><circle cx="12.5" cy="48" r="3.2" fill="#7BC043"/><circle cx="16.5" cy="49.5" r="2.8" fill="#F27C9A"/><path d="M3.5 51h16l-2 5.5a3 3 0 0 1-3 2h-6a3 3 0 0 1-3-2z" fill="#C98B4B"/><circle cx="47.5" cy="49.5" r="2.8" fill="#F27C9A"/><circle cx="51.5" cy="48" r="3.2" fill="#7BC043"/><circle cx="56.5" cy="49" r="3.2" fill="#F2A33A"/><path d="M44.5 51h16l-2 5.5a3 3 0 0 1-3 2h-6a3 3 0 0 1-3-2z" fill="#C98B4B"/></svg>` }
+];
+const BRAND_IDS = BRANDS.map(b => b.id).filter(Boolean);
+$('#brands').innerHTML = BRANDS.map((b, i) => `<button class="brand" type="button" data-brand="${i}">${b.svg}<span>${b.label}</span></button>`).join('');
+// "Cố định tháng này": khoản đã có trong Kế hoạch tháng này (chưa chép thì hiện tất cả), trừ 3 khoản đã có icon
 function quickList() {
-  const mk = monthKey(TODAY());
-  const qs = S.plan.items.filter(i => i.id !== 'hocphi').map(it => {
+  const mk = monthKey(TODAY()), ent = S.plan.entries[mk];
+  const inMonth = it => !ent || !Object.keys(ent).length || !!ent[it.id];
+  const qs = S.plan.items.filter(i => !BRAND_IDS.includes(i.id) && (i.id !== 'hocphi' || (ent && ent.hocphi)) && inMonth(i)).map(it => {
     const e = (S.plan.entries[mk] || {})[it.id];
     const amt = (e && e.amt) || lastAmount(it.id, mk) || it.hint || 0;
     return { t: it.name.replace(/\s*\(ước tính\)/, '').replace('Dai-ichi – hợp đồng ', 'Dai-ichi HĐ'), s: amt ? `~${fmt(amt)}${it.method === 'ck' ? ' · CK' : ''}` : (it.chan === 'online' ? 'đặt online' : 'tại quầy'), text: it.text || it.name, img: it.method === 'ck' ? 'wallet' : it.kind === 'baohiem' ? 'bag' : it.kind === 'tmdt' ? 'stack' : it.kind === 'sieuthi' ? 'coins' : 'card', it };
   });
-  qs.splice(qs.findIndex(q => q.it.id === 'vcb'), 0, { t: 'Vinmec', s: 'viện phí', text: 'viện phí Vinmec ', img: 'bag' });
+  const vi = qs.findIndex(q => q.it.id === 'vcb');
+  qs.splice(vi < 0 ? qs.length : vi, 0, { t: 'Vinmec', s: 'viện phí', text: 'viện phí Vinmec ', img: 'bag' });
   return qs;
 }
 let QUICK = [];
@@ -516,21 +596,36 @@ function renderQuick() {
 function spoken(n) { if (n >= 1e6) { const tr = Math.floor(n / 1e6), rest = Math.round((n % 1e6) / 1e3); return rest ? `${tr}tr${String(rest).padStart(3, '0').replace(/0+$/, '')}` : `${tr}tr`; } return Math.round(n / 1000) + 'k'; }
 function fillComposer(text, opts) {
   const q = $('#q'); q.value = text; fromText();
-  if (opts) { Object.assign(st, opts); renderSuggest(); }
+  if (opts) { Object.assign(st, opts); if (opts.group) $('#fGroup').value = opts.group; renderSuggest(); }
   q.focus(); try { q.setSelectionRange(text.length, text.length); } catch (e) {}
   q.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+// điền sẵn theo một khoản trong Kế hoạch (hóa đơn có số tiền thì điền luôn số tiền)
+function fillItem(it) {
+  const mk = monthKey(TODAY()); const e2 = (S.plan.entries[mk] || {})[it.id];
+  const amt = (e2 && e2.amt) || lastAmount(it.id, mk) || it.hint || 0;
+  const fixed = ['dai1', 'dai2', 'dien', 'claude', 'yt', 'vcb'].includes(it.id);
+  fillComposer((it.text || it.name) + (fixed && amt ? ' ' + spoken(amt) : ' '), { kind: it.kind, chan: it.chan || st.chan, group: it.group, mode: it.kind === 'none' ? 'ck' : 'swipe' });
 }
 $('#quick').addEventListener('click', e => {
   const b = e.target.closest('[data-q]'); if (!b) return;
   const x = QUICK[+b.dataset.q];
-  if (x.it) {
-    const mk = monthKey(TODAY()); const e2 = (S.plan.entries[mk] || {})[x.it.id];
-    const amt = (e2 && e2.amt) || lastAmount(x.it.id, mk) || x.it.hint || 0;
-    const fixed = ['dai1', 'dai2', 'dien', 'claude', 'yt', 'vcb'].includes(x.it.id);
-    fillComposer((x.it.text || x.it.name) + (fixed && amt ? ' ' + spoken(amt) : ' '), { kind: x.it.kind, chan: x.it.chan || st.chan, group: x.it.group, mode: x.it.kind === 'none' ? 'ck' : 'swipe' });
-    $('#fGroup').value = x.it.group;
-  } else fillComposer(x.text);
+  if (x.it) fillItem(x.it); else fillComposer(x.text);
 });
+$('#brands').addEventListener('click', e => {
+  const b = e.target.closest('[data-brand]'); if (!b) return;
+  const x = BRANDS[+b.dataset.brand], it = x.id && S.plan.items.find(i => i.id === x.id);
+  if (it) fillItem(it);
+  else fillComposer(x.text, x.cash ? { mode: 'cash', kind: 'none', ask: null } : null);
+});
+// mở "Cửa hàng quẹt thẻ" thì đóng "Cố định tháng này" và ngược lại, cho gọn
+function openOnly(which) {
+  [['#storeToggle', '#stores'], ['#moreToggle', '#quick']].forEach(([t, p]) => {
+    const show = t === which && $(p).hidden;
+    $(p).hidden = !show; $(t).setAttribute('aria-expanded', String(show));
+  });
+}
+$('#moreToggle').addEventListener('click', () => openOnly('#moreToggle'));
 
 /* cửa hàng quẹt thẻ được */
 const STORE_CATS = {
@@ -551,7 +646,7 @@ function renderStores() {
   }).join('');
   $('#nsCat').innerHTML = Object.entries(STORE_CATS).map(([k, c]) => `<option value="${k}">${c.name.split(' · ')[0]}</option>`).join('');
 }
-$('#storeToggle').addEventListener('click', e => { const p = $('#stores'); p.hidden = !p.hidden; e.currentTarget.setAttribute('aria-expanded', String(!p.hidden)); });
+$('#storeToggle').addEventListener('click', () => openOnly('#storeToggle'));
 $('#storeChan').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; storeChan = b.dataset.c; $$('#storeChan button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); });
 $('#storeGroups').addEventListener('click', e => {
   const b = e.target.closest('[data-store]'); if (!b) return;
@@ -639,14 +734,12 @@ function everydayBlock(mk, ee, stmt) {
   const w = cap ? Math.min(100, ee.est / cap * 100) : 0;
   const left = Math.max(0, cap - ee.est);
   const status = ee.est >= cap - 1 ? '<span class="tag warn">đã chạm trần</span>' : ee.est >= cap * .8 ? `<span class="tag warn">sắp hết trần · còn ${short(left)}</span>` : `<span class="tag ok">còn ${short(left)} trần</span>`;
-  return `<div style="border-top:1px dashed var(--line);margin-top:4px;padding-top:12px" class="stack">
-    <div class="row between wrap"><b>Everyday tháng ${+mk.slice(5)}/${mk.slice(0, 4)}</b>${status}</div>
+  return `<div class="row between wrap"><b>Everyday tháng ${+mk.slice(5)}/${mk.slice(0, 4)}</b>${status}</div>
     <div class="row between small"><span class="muted">Đã chi + dự kiến trong tháng</span><b class="num">${fmt(ee.T)}</b></div>
     <div class="meter eve"><i style="width:${w}%"></i></div>
     <div class="ticks"><span style="left:0">0</span><span style="left:100%">trần ${short(cap)}</span></div>
-    <p class="xs muted">Hoàn dự kiến ${fmt(ee.est)} / trần ${fmt(cap)} · tính theo tháng dương lịch · chỉ đơn online ≥${short(R.minTx)}${ee.T >= R.high ? '' : ` · tổng chi ≥${short(R.high)} thì trần lên ${short(R.capHigh)}`}</p>
-    <p class="xs muted">Sao kê chốt <b>${dmy(stmt.end)}</b> · hạn trả <b>${dmy(dueOf(stmt, S.cards.eve.dueDay))}</b></p>
-  </div>`;
+    <p class="xs muted">Hoàn dự kiến ${fmt(ee.est)} / trần ${fmt(cap)} · hoàn tính theo tháng ${+mk.slice(5)} (1/${+mk.slice(5)}–${daysInMonth(mk)}/${+mk.slice(5)}) · chỉ đơn online ≥${short(R.minTx)}${ee.T >= R.high ? '' : ` · tổng chi ≥${short(R.high)} thì trần lên ${short(R.capHigh)}`}</p>
+    <p class="xs muted">Sao kê kỳ ${pLabel(stmt)} · chốt <b>${dmy(stmt.end)}</b> · hạn trả <b>${dmy(dueOf(stmt, S.cards.eve.dueDay))}</b></p>`;
 }
 function methodSelect(r) {
   const opts = (r.item.sched === 'buy' ? ['sup', 'eve'] : ['auto', 'sup', 'eve', 'eco', 'ck', 'cash']).map(m => `<option value="${m}"${m === r.chosen ? ' selected' : ''}>${m === 'auto' ? (r.chosen === 'auto' && METHODS[r.method] ? 'Tự: ' + METHODS[r.method].name : 'Tự chọn') : m === 'ck' ? 'CK/QR' : METHODS[m].name}</option>`).join('');
@@ -680,8 +773,8 @@ function renderPlan() {
     <div class="meter sup"><i style="width:${pctW}%"></i></div>
     <div class="ticks"><span style="left:0">0</span><span style="left:${minAt}%">${short(R.min)}</span><span style="left:100%">${short(R.high)}</span></div>
     <p class="xs muted">Hoàn dự kiến ${fmt(se.est)}${se.cap ? ` / trần ${fmt(se.cap)}` : ''} · còn ${se.T >= R.high ? '0' : fmt(R.high - se.T)} đ tới mốc ${short(R.high)}${se.T < R.min && se.T > 0 ? ` · thiếu ${fmt(R.min - se.T)} đ để đạt ${short(R.min)}: dồn thêm tiêm chủng hoặc thuốc vào Supreme` : ''}${hasHosp ? ' · kỳ này có viện phí: không mua đồ lớn' : ''}</p>
-    <p class="xs muted">Sao kê chốt <b>${dmy(supP.end)}</b> · hạn trả <b>${dmy(dueOf(supP, S.cards.sup.dueDay))}</b></p>
-    ${everydayBlock(mk, ee, eveStmt)}`;
+    <p class="xs muted">Sao kê chốt <b>${dmy(supP.end)}</b> · hạn trả <b>${dmy(dueOf(supP, S.cards.sup.dueDay))}</b></p>`;
+  $('#eveMeter').innerHTML = everydayBlock(mk, ee, eveStmt);
   // dòng
   const el = $('#planRows');
   if (!rows.length) { el.innerHTML = `<div class="empty small">${mLabel(mk)} chưa có khoản nào.<br>Bấm <b>Chép từ tháng trước</b>, hoặc chạm khoản bên dưới để thêm.</div>`; }

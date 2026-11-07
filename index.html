@@ -141,6 +141,21 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .qbtn .s{font-size:12px;color:var(--muted)}
 .qbtn > span:last-child{min-width:0}
 .storebtn{display:flex;align-items:center;gap:10px;padding:12px;border-radius:16px;border:1.5px dashed var(--green-bag);background:transparent;width:100%;text-align:left}
+/* 4 icon chỗ hay mua + 2 nút thu gọn */
+.brands{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.brand{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px 6px;border:1px solid var(--line);border-radius:16px;background:var(--surface);font-size:12px;font-weight:600;color:var(--ink);min-width:0}
+.brand svg{width:46px;height:46px;display:block}
+.brand span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.brand:active{transform:scale(.96)}
+.tgl{display:flex;align-items:center;justify-content:space-between;gap:4px;padding:8px 10px;border-radius:12px;border:1.5px dashed var(--green-bag);background:transparent;font-size:12.5px;font-weight:600;line-height:1.25;text-align:left;min-width:0;color:var(--ink)}
+.tgl .ar{color:var(--muted);flex:none}
+.tgl[aria-expanded="true"]{border-style:solid;background:var(--green-soft)}
+.tgl[aria-expanded="true"] .ar{transform:rotate(180deg)}
+/* dòng "App hiểu" thay cho 4 ô */
+.sumline{display:flex;align-items:center;gap:8px;font-size:13.5px;line-height:1.35;margin-top:-4px}
+.sumline .btn{flex:none;padding:5px 10px}
+.sumline .btn[aria-expanded="true"]{background:var(--green-soft);border-color:transparent}
+.suggest .plan-hit .ok{color:var(--green);font-weight:700}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chipbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 11px;font-size:13.5px}
 
@@ -340,13 +355,40 @@ details.cardbox > summary::-webkit-details-marker{display:none}
   <div class="panel" id="vibeQuick" data-vibepanel="q" hidden></div>
   <div class="vband" id="vband" aria-hidden="true"></div>
 
+  <div class="stack" style="gap:8px">
+    <span class="sec-label">Chạm để điền sẵn</span>
+    <div class="brands" id="brands"></div>
+    <div class="quick">
+      <button class="tgl" type="button" id="storeToggle" aria-expanded="false"><span>Cửa hàng quẹt thẻ</span><span class="ar">▾</span></button>
+      <button class="tgl" type="button" id="moreToggle" aria-expanded="false"><span>Cố định tháng này</span><span class="ar">▾</span></button>
+    </div>
+    <div class="panel stack" id="stores" hidden>
+      <div class="seg" id="storeChan">
+        <button type="button" data-c="quay" aria-pressed="true">Tại quầy</button>
+        <button type="button" data-c="online" aria-pressed="false">Đặt online</button>
+      </div>
+      <div id="storeGroups" class="stack"></div>
+      <p class="xs muted" style="margin:0">Tại quầy: Supreme. Đặt online đơn từ 200k: Everyday 5%. WinMart hay siêu thị khác đều như nhau.</p>
+      <div class="stack" style="gap:8px;border-top:1px dashed var(--line);padding-top:12px">
+        <b class="small">Cửa hàng mới</b>
+        <div class="fgrid">
+          <div class="field"><label for="nsName">Tên cửa hàng</label><input id="nsName" placeholder="VD: Kohnan" autocomplete="off"></div>
+          <div class="field"><label for="nsCat">Loại</label><select id="nsCat"></select></div>
+        </div>
+        <button class="btn sm" type="button" id="nsAdd">Nhớ cửa hàng này</button>
+      </div>
+    </div>
+    <div class="quick" id="quick" hidden></div>
+  </div>
+
   <div class="composer">
     <div class="row between">
       <h2 class="row" style="gap:6px"><svg class="holly noel-only" viewBox="0 0 40 30" aria-hidden="true"><path d="M2 16C6 6 15 3 21 9c-2 1-3 3-2 5-3-1-5 1-5 3-2-2-5-2-6 0-1-2-4-2-6-1z" fill="#4E6B47"/><path d="M38 16C34 6 25 3 19 9c2 1 3 3 2 5 3-1 5 1 5 3 2-2 5-2 6 0 1-2 4-2 6-1z" fill="#5E7D55"/><circle cx="17" cy="15" r="4" fill="#B5432F"/><circle cx="23" cy="15" r="4" fill="#A63D2B"/><circle cx="20" cy="20" r="4" fill="#C4553D"/></svg>Ghi khoản chi</h2>
       <span class="xs muted">dùng micro bàn phím để nói</span>
     </div>
     <textarea id="q" rows="2" placeholder="VD: bánh mì 20k · đi chợ 150k · Dai-ichi 5tr4" autocomplete="off"></textarea>
-    <div class="parsed">
+    <div class="sumline" id="sumLine" hidden><span class="grow" id="sumText"></span><button class="btn sm ghost" type="button" id="sumEdit" aria-expanded="false">✎ Sửa</button></div>
+    <div class="parsed" id="parsedBox" hidden>
       <div class="field wide"><label for="fNote">Nội dung</label><input id="fNote" autocomplete="off"></div>
       <div class="field"><label for="fAmt">Số tiền (đ)</label><input id="fAmt" inputmode="numeric" class="num" autocomplete="off"></div>
       <div class="field"><label for="fDate">Ngày</label><input id="fDate" type="date"></div>
@@ -367,31 +409,6 @@ details.cardbox > summary::-webkit-details-marker{display:none}
     <button class="btn primary block" id="saveBtn" type="button">Lưu khoản chi</button>
   </div>
 
-  <div class="stack">
-    <span class="sec-label">Khoản cố định · chạm để điền sẵn</span>
-    <div class="quick" id="quick"></div>
-    <button class="storebtn" type="button" id="storeToggle" aria-expanded="false">
-      <span class="sticker sm"><img src="img/brief.jpg" alt=""></span>
-      <span class="grow"><b>Cửa hàng quẹt thẻ được</b><br><span class="xs muted">siêu thị, tiện lợi, điện máy, quần áo, nhà sách…</span></span>
-      <span class="muted">▾</span>
-    </button>
-    <div class="panel stack" id="stores" hidden>
-      <div class="seg" id="storeChan">
-        <button type="button" data-c="quay" aria-pressed="true">Tại quầy</button>
-        <button type="button" data-c="online" aria-pressed="false">Đặt online</button>
-      </div>
-      <div id="storeGroups" class="stack"></div>
-      <div class="stack" style="gap:8px;border-top:1px dashed var(--line);padding-top:12px">
-        <b class="small">Cửa hàng mới</b>
-        <div class="fgrid">
-          <div class="field"><label for="nsName">Tên cửa hàng</label><input id="nsName" placeholder="VD: Kohnan" autocomplete="off"></div>
-          <div class="field"><label for="nsCat">Loại</label><select id="nsCat"></select></div>
-        </div>
-        <button class="btn sm" type="button" id="nsAdd">Nhớ cửa hàng này</button>
-      </div>
-    </div>
-  </div>
-
   <div class="panel">
     <div class="row between" style="margin-bottom:2px"><h3>Hôm nay</h3><span class="num small muted" id="todayTotal"></span></div>
     <div class="list" id="todayList"></div>
@@ -402,12 +419,13 @@ details.cardbox > summary::-webkit-details-marker{display:none}
 <section class="view" id="v-ke-hoach" hidden>
   <div class="top">
     <div class="appmark"><img src="img/app.jpg" data-pageicon="ke-hoach" data-base="img/app.jpg" alt=""></div>
-    <div class="grow"><h1>Kế hoạch tháng</h1><p class="muted small">Tháng mới: bấm "Chép từ tháng trước" · chưa vào báo cáo tới khi "đã trả"</p></div>
+    <div class="grow"><h1>Kế hoạch tháng</h1><p class="muted small">Tháng mới: bấm "Chép từ tháng trước" · kế hoạch chỉ là ước tính, khoản thật lấy từ Nhập liệu</p></div>
   </div>
   <div class="monthbar" id="monthbar"></div>
   <div id="restBanner"></div>
   <div class="kpis" id="planKpis"></div>
   <div class="panel stack" id="supMeter"></div>
+  <div class="panel stack" id="eveMeter"></div>
   <div class="panel">
     <div class="row between wrap" style="margin-bottom:4px;gap:8px">
       <h3>Khoản trong tháng</h3>
