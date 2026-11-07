@@ -2,7 +2,7 @@
    Dữ liệu nằm trong máy (localStorage). Sao lưu: file SoChiTieu.json trên OneDrive (Lưu vào Tệp), giống app bánh bao.
    Không lưu số thẻ, CVV, OTP, số tài khoản. */
 'use strict';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 
 /* ---------- tiện ích ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -617,6 +617,21 @@ function renderMonthbar() {
   if (!ms.includes(curMonth)) curMonth = ms[0];
   $('#monthbar').innerHTML = ms.map((mk, i) => `<button type="button" data-k="${mk}" aria-pressed="${mk === curMonth}"><b>${mLabel(mk)}</b><span>${i === 0 ? 'tháng này' : '+' + i}${isRestMonth(mk) ? ' · nghỉ Dai-ichi' : ''}</span></button>`).join('');
 }
+// Khung Everyday: hoàn tính theo tháng dương lịch (trần tháng), thanh toán theo kỳ sao kê riêng
+function everydayBlock(mk, ee, stmt) {
+  const R = S.rules.eve, cap = ee.cap || R.cap;
+  const w = cap ? Math.min(100, ee.est / cap * 100) : 0;
+  const left = Math.max(0, cap - ee.est);
+  const status = ee.est >= cap - 1 ? '<span class="tag warn">đã chạm trần</span>' : ee.est >= cap * .8 ? `<span class="tag warn">sắp hết trần · còn ${short(left)}</span>` : `<span class="tag ok">còn ${short(left)} trần</span>`;
+  return `<div style="border-top:1px dashed var(--line);margin-top:4px;padding-top:12px" class="stack">
+    <div class="row between wrap"><b>Everyday tháng ${+mk.slice(5)}/${mk.slice(0, 4)}</b>${status}</div>
+    <div class="row between small"><span class="muted">Đã chi + dự kiến trong tháng</span><b class="num">${fmt(ee.T)}</b></div>
+    <div class="meter eve"><i style="width:${w}%"></i></div>
+    <div class="ticks"><span style="left:0">0</span><span style="left:100%">trần ${short(cap)}</span></div>
+    <p class="xs muted">Hoàn dự kiến ${fmt(ee.est)} / trần ${fmt(cap)} · tính theo tháng dương lịch · chỉ đơn online ≥${short(R.minTx)}${ee.T >= R.high ? '' : ` · tổng chi ≥${short(R.high)} thì trần lên ${short(R.capHigh)}`}</p>
+    <p class="xs muted">Sao kê chốt <b>${dmy(stmt.end)}</b> · hạn trả <b>${dmy(dueOf(stmt, S.cards.eve.dueDay))}</b></p>
+  </div>`;
+}
 function methodSelect(r) {
   const opts = (r.item.sched === 'buy' ? ['sup', 'eve'] : ['auto', 'sup', 'eve', 'eco', 'ck', 'cash']).map(m => `<option value="${m}"${m === r.chosen ? ' selected' : ''}>${m === 'auto' ? (r.chosen === 'auto' && METHODS[r.method] ? 'Tự: ' + METHODS[r.method].name : 'Tự chọn') : m === 'ck' ? 'CK/QR' : METHODS[m].name}</option>`).join('');
   return `<select class="chip card m-${r.method}" data-msel="${esc(r.ref)}" aria-label="Cách trả ${esc(r.item.name)}">${opts}</select>`;
@@ -626,8 +641,10 @@ function renderPlan() {
   // KPI
   let total = 0, card = 0;
   rows.forEach(r => { const a = r.paid ? (r.e && r.e.amt) || 0 : r.amt; total += a; if (isCard(r.method)) card += a; });
-  const supP = stmtPeriod('sup', dateIn(mk, S.cards.sup.closeDay));
+  // kỳ Supreme chứa giữa tháng (ngày 15): chốt ngày 5 → kỳ 06/11–05/12 cho tháng 11; chốt ngày 20 → kỳ 21/10–20/11
+  const supP = stmtPeriod('sup', `${mk}-15`);
   const eveP = cashPeriod('eve', `${mk}-01`);
+  const eveStmt = stmtPeriod('eve', `${mk}-15`);
   const se = supEst(spendsIn('sup', supP, { plan: true })), ee = eveEst(spendsIn('eve', eveP, { plan: true }));
   $('#restBanner').innerHTML = isRestMonth(mk) ? `<div class="rest-banner"><span class="sticker sm"><img src="${img('piggy')}" alt=""></span><span class="grow"><b>Tháng nghỉ Dai-ichi.</b> Trần ${short(S.rules.sup.cap)} Supreme còn trống: Shopee chuyển sang Supreme 12%. Hợp lý để mua điện máy.</span></div>` : '';
   $('#planKpis').innerHTML = `
@@ -642,7 +659,9 @@ function renderPlan() {
     <div class="row between small"><span class="muted">Đã chi + dự kiến trong kỳ</span><b class="num">${fmt(se.T)}</b></div>
     <div class="meter sup"><i style="width:${pctW}%"></i></div>
     <div class="ticks"><span style="left:0">0</span><span style="left:${minAt}%">${short(R.min)}</span><span style="left:100%">${short(R.high)}</span></div>
-    <p class="xs muted">Hoàn dự kiến ${fmt(se.est)}${se.cap ? ` / trần ${fmt(se.cap)}` : ''} · còn ${se.T >= R.high ? '0' : fmt(R.high - se.T)} đ tới mốc ${short(R.high)}${se.T < R.min && se.T > 0 ? ` · thiếu ${fmt(R.min - se.T)} đ để đạt ${short(R.min)}: dồn thêm tiêm chủng hoặc thuốc vào Supreme` : ''}${hasHosp ? ' · kỳ này có viện phí: không mua đồ lớn' : ''}</p>`;
+    <p class="xs muted">Hoàn dự kiến ${fmt(se.est)}${se.cap ? ` / trần ${fmt(se.cap)}` : ''} · còn ${se.T >= R.high ? '0' : fmt(R.high - se.T)} đ tới mốc ${short(R.high)}${se.T < R.min && se.T > 0 ? ` · thiếu ${fmt(R.min - se.T)} đ để đạt ${short(R.min)}: dồn thêm tiêm chủng hoặc thuốc vào Supreme` : ''}${hasHosp ? ' · kỳ này có viện phí: không mua đồ lớn' : ''}</p>
+    <p class="xs muted">Sao kê chốt <b>${dmy(supP.end)}</b> · hạn trả <b>${dmy(dueOf(supP, S.cards.sup.dueDay))}</b></p>
+    ${everydayBlock(mk, ee, eveStmt)}`;
   // dòng
   const el = $('#planRows');
   if (!rows.length) { el.innerHTML = `<div class="empty small">${mLabel(mk)} chưa có khoản nào.<br>Bấm <b>Chép từ tháng trước</b>, hoặc chạm khoản bên dưới để thêm.</div>`; }
