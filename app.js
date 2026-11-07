@@ -2,7 +2,7 @@
    Dữ liệu nằm trong máy (localStorage). Sao lưu: file SoChiTieu.json trên OneDrive (Lưu vào Tệp), giống app bánh bao.
    Không lưu số thẻ, CVV, OTP, số tài khoản. */
 'use strict';
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 /* ---------- tiện ích ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -19,6 +19,7 @@ const nowIso = () => new Date().toISOString();
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parseYmd = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const dm = s => { const d = parseYmd(s); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`; };
+const mdy = s => `${s.slice(5, 7)}/${s.slice(8, 10)}/${s.slice(2, 4)}`;   // MM/dd/yy, dùng ở Kế hoạch tháng
 const dmy = s => { const d = parseYmd(s); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`; };
 const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); };
 const daysBetween = (a, b) => Math.round((parseYmd(b) - parseYmd(a)) / 864e5);
@@ -110,7 +111,7 @@ function seed() {
     v: 1, firstAt: nowIso(), tx: [], deleted: {},
     plan: { items: clone(DEFAULT_ITEMS), entries: {}, buys: [] },
     cards: clone(DEFAULT_CARDS), rules: clone(DEFAULT_RULES), merchants: {}, actual: {}, stmts: {},
-    settings: { vibe: 'noel', palette: null, saveRemind: false },
+    settings: { vibe: 'noel', palette: null, saveRemind: false, names: [] },
     cfgAt: nowIso(), changedAt: null, exportedAt: null, importedAt: null
   };
 }
@@ -617,8 +618,8 @@ function renderMonthbar() {
   $('#monthbar').innerHTML = ms.map((mk, i) => `<button type="button" data-k="${mk}" aria-pressed="${mk === curMonth}"><b>${mLabel(mk)}</b><span>${i === 0 ? 'tháng này' : '+' + i}${isRestMonth(mk) ? ' · nghỉ Dai-ichi' : ''}</span></button>`).join('');
 }
 function methodSelect(r) {
-  const opts = (r.item.sched === 'buy' ? ['sup', 'eve'] : ['auto', 'sup', 'eve', 'eco', 'ck', 'cash']).map(m => `<option value="${m}"${m === r.chosen ? ' selected' : ''}>${m === 'auto' ? (r.chosen === 'auto' && METHODS[r.method] ? 'Tự chọn: ' + METHODS[r.method].name : 'Tự chọn') : METHODS[m].name}</option>`).join('');
-  return `<select class="msel m-${r.method}" data-msel="${esc(r.ref)}" aria-label="Cách trả ${esc(r.item.name)}">${opts}</select>`;
+  const opts = (r.item.sched === 'buy' ? ['sup', 'eve'] : ['auto', 'sup', 'eve', 'eco', 'ck', 'cash']).map(m => `<option value="${m}"${m === r.chosen ? ' selected' : ''}>${m === 'auto' ? (r.chosen === 'auto' && METHODS[r.method] ? 'Tự: ' + METHODS[r.method].name : 'Tự chọn') : m === 'ck' ? 'CK/QR' : METHODS[m].name}</option>`).join('');
+  return `<select class="chip card m-${r.method}" data-msel="${esc(r.ref)}" aria-label="Cách trả ${esc(r.item.name)}">${opts}</select>`;
 }
 function renderPlan() {
   const mk = curMonth, rows = projRows(mk);
@@ -649,15 +650,16 @@ function renderPlan() {
     const g = rowGain(r), it = r.item;
     const amtVal = r.paid ? ((r.e && r.e.amt) || 0) : r.amt;
     const ph = lastAmount(r.id, mk) || it.hint || 0;
-    const ruleSel = r.buy ? '<span>Dự định mua</span>' : `<select class="rsel" data-rule="${esc(r.ref)}" aria-label="Quy luật lặp ${esc(it.name)}">${Object.entries(SCHED).map(([k, n]) => `<option value="${k}"${k === it.sched ? ' selected' : ''}>${n}</option>`).join('')}</select>`;
-    const dateBox = r.buy ? `<span>mua trước ${dm(r.date)}</span>` : `<input type="date" class="dsel" data-day="${esc(r.ref)}" min="${mk}-01" max="${dateIn(mk, 31)}" value="${r.day ? dateIn(mk, r.day) : ''}" aria-label="Ngày đóng ${esc(it.name)}"${r.paid ? ' disabled' : ''}>${r.day ? '' : '<span class="xs muted">trong tháng</span>'}`;
-    return `<div class="prow">
-      <div style="min-width:0"><button class="name" type="button" data-edit="${esc(r.id)}">${esc(it.name)}</button>
-        <div class="meta">${methodSelect(r)}${ruleSel}</div>
-        <div class="meta">${dateBox}<button class="paidbtn${r.paid ? ' on' : ''}" type="button" data-paid="${esc(r.ref)}">${r.paid ? '✓ đã trả' : 'Đã trả?'}</button>${r.paid ? '' : `<button class="xbtn" type="button" data-rm="${esc(r.ref)}" aria-label="Bỏ ${esc(it.name)} khỏi tháng này">✕</button>`}</div>
-        ${r.autoWhy ? `<div class="xs" style="color:var(--green);font-weight:600;margin-top:3px">${esc(r.autoWhy)}</div>` : it.note ? `<div class="xs muted" style="margin-top:3px">${esc(it.note)}</div>` : ''}</div>
-      <div class="right"><input inputmode="numeric" aria-label="Số tiền ${esc(it.name)}" data-amt="${esc(r.ref)}" value="${amtVal ? fmt(amtVal) : ''}" placeholder="${ph ? fmt(ph) : 'số tiền'}"${r.paid || r.buy ? ' disabled' : ''}>
-        ${g >= 1 ? `<span class="cbk num">~${fmt(g)}${r.amt ? '' : ' (nếu như lần trước)'}</span>` : `<span class="xs muted" style="text-align:right">${isCard(r.method) && r.method !== 'eco' ? 'trần đã đủ' : 'không hoàn'}</span>`}</div></div>`;
+    const ruleSel = r.buy ? '<span class="chip">Dự định mua</span>' : `<select class="chip" data-rule="${esc(r.ref)}" aria-label="Quy luật lặp ${esc(it.name)}">${Object.entries(SCHED).map(([k, n]) => `<option value="${k}"${k === it.sched ? ' selected' : ''}>${n}</option>`).join('')}</select>`;
+    const dateBox = r.buy ? `<span class="chip">trước ${mdy(r.date)}</span>`
+      : `<label class="chip dchip${r.day ? '' : ' empty'}">${r.day ? mdy(dateIn(mk, r.day)) : 'trong tháng'}<input type="date" data-day="${esc(r.ref)}" min="${mk}-01" max="${dateIn(mk, 31)}" value="${r.day ? dateIn(mk, r.day) : ''}" aria-label="Ngày đóng ${esc(it.name)}"${r.paid ? ' disabled' : ''}></label>`;
+    const cb = g >= 1 ? `<span class="cb num">~${fmt(g)} hoàn${r.amt ? '' : ' (như lần trước)'}</span>` : `<span class="cb none">${isCard(r.method) && r.method !== 'eco' ? 'trần đã đủ' : 'không hoàn'}</span>`;
+    const note = r.autoWhy ? `<div class="l4 auto">Tự chọn: ${esc(r.autoWhy)}</div>` : it.note ? `<div class="l4">${esc(it.note)}</div>` : '';
+    return `<div class="crow${r.paid ? ' paid' : ''}">
+      <div class="l1"><button class="nm" type="button" data-edit="${esc(r.id)}">${esc(it.name)}</button><input class="amt" inputmode="numeric" aria-label="Số tiền ${esc(it.name)}" data-amt="${esc(r.ref)}" value="${amtVal ? fmt(amtVal) : ''}" placeholder="${ph ? fmt(ph) : 'số tiền'}"${r.paid || r.buy ? ' disabled' : ''}></div>
+      <div class="l2">${ruleSel}${dateBox}${methodSelect(r)}</div>
+      <div class="l3"><button class="chip pbtn${r.paid ? ' on' : ''}" type="button" data-paid="${esc(r.ref)}">${r.paid ? '✓ đã trả' : r.buy ? 'Đã mua?' : 'Đã trả?'}</button>${r.paid ? '' : `<button class="chip xb" type="button" data-rm="${esc(r.ref)}" aria-label="Bỏ ${esc(it.name)} khỏi tháng này">✕</button>`}${cb}</div>
+      ${note}</div>`;
   }).join('');
   // thêm khoản chưa có trong tháng
   const notIn = S.plan.items.filter(i => !(S.plan.entries[mk] || {})[i.id]);
@@ -1338,7 +1340,25 @@ function applyVibe() {
   $$('[data-vibes]').forEach(el => { el.innerHTML = Object.keys(VIBES).map(k => `<button type="button" data-vibe="${k}" aria-pressed="${k === S.settings.vibe}"><img src="${VIBES[k].icon}" alt=""><span>${esc(VIBES[k].name)}</span></button>`).join(''); });
   applyPalette(); renderHello();
 }
+// Tên gọi: mỗi ngày bốc ngẫu nhiên một tên trong danh sách (cả ngày giữ nguyên tên đó)
+const nickList = () => (S.settings.names || []).map(s => s.trim()).filter(Boolean);
+function todayName() {
+  const ns = nickList();
+  if (!ns.length) return 'bạn';
+  if (ns.length === 1) return ns[0];
+  let h = 2166136261;
+  for (const ch of TODAY() + '|' + ns.join('|')) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  return ns[h % ns.length];
+}
+function renderNick() {
+  const ta = $('#nickNames');
+  if (document.activeElement !== ta) ta.value = (S.settings.names || []).join('\n');
+  const ns = nickList();
+  $('#nickPreview').innerHTML = ns.length ? `Hôm nay: <b>Chào ${esc(todayName())}</b>${ns.length > 1 ? ` · ${ns.length} tên, mai có thể là tên khác` : ''}` : 'Để trống thì app ghi "Chào bạn".';
+}
+$('#nickNames').addEventListener('input', e => { S.settings.names = e.target.value.split('\n').map(s => s.slice(0, 30)); save(true); renderHello(); renderNick(); });
 function renderHello() {
+  $('#helloName').textContent = 'Chào ' + todayName();
   const d = new Date();
   const extra = curVibe().greet ? curVibe().greet(d) : '';
   const sp = stmtPeriod('sup', TODAY());
@@ -1408,7 +1428,7 @@ window.addEventListener('hashchange', route);
 function renderAll() {
   buildProjection();
   renderQuick(); renderStores(); renderToday(); renderSuggest();
-  renderMonthbar(); renderPlan(); renderReport(); renderRules(); renderSyncDot(); renderVPrompts(); renderHello();
+  renderMonthbar(); renderPlan(); renderReport(); renderRules(); renderSyncDot(); renderVPrompts(); renderHello(); renderNick();
 }
 // mở lại app sau nửa đêm: cập nhật "hôm nay"
 let lastDay = TODAY();

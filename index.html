@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -176,20 +176,29 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .ticks{position:relative;height:16px;font-size:11px;color:var(--muted)}
 .ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
 .ticks span:first-child{transform:none}.ticks span:last-child{transform:translateX(-100%)}
-.prow{display:grid;grid-template-columns:minmax(0,1fr) 118px;gap:6px 10px;padding:11px 0;border-bottom:1px solid var(--line);align-items:center}
-.prow:last-child{border-bottom:0}
-.prow .name{font-weight:600;background:none;border:0;padding:0;text-align:left;color:var(--ink)}
-.prow .meta{font-size:12px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:3px}
-.prow input{width:100%;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:7px 9px;font:600 14.5px var(--f-body);text-align:right;font-variant-numeric:tabular-nums}
-.prow input::placeholder{color:var(--muted);opacity:.55;font-weight:500}
-.prow .right{display:flex;flex-direction:column;gap:4px;align-items:stretch}
-.prow .right .cbk{font-size:11.5px;text-align:right}
-.prow select.msel{border:1px solid currentColor;border-radius:999px;background:color-mix(in srgb,currentColor 10%,var(--surface));font:600 12px var(--f-body);padding:2px 6px;color:inherit}
-.prow .meta + .meta{margin-top:5px}
-.prow select.msel{width:auto;max-width:100%}
-.prow select.rsel{border:1px solid var(--line);border-radius:999px;background:var(--surface);font:600 12px var(--f-body);padding:2px 6px;color:var(--ink)}
-.prow input.dsel{width:auto;max-width:150px;text-align:left;border-radius:999px;padding:2px 8px;font:600 12px var(--f-body);color:var(--ink)}
-.prow input.dsel:not([value]),.prow input.dsel[value=""]{color:var(--muted)}
+/* mục chi gọn: dòng 1 tên + số tiền · dòng 2 quy luật, ngày | thẻ · dòng 3 đã trả, ✕ | hoàn · dòng 4 ghi chú nhỏ (nếu có) */
+.crow{display:flex;flex-direction:column;gap:5px;padding:8px 0;border-bottom:1px solid var(--line)}
+.crow:last-child{border-bottom:0}
+.crow .l1,.crow .l2,.crow .l3{display:flex;align-items:center;gap:5px;min-width:0}
+.crow .nm{flex:1;min-width:0;font-weight:600;font-size:13.5px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:none;border:0;padding:0;text-align:left;color:var(--ink)}
+.crow .amt{flex:none;width:108px;height:28px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:600 13px var(--f-body);text-align:right;font-variant-numeric:tabular-nums}
+.crow .amt::placeholder{color:var(--muted);opacity:.6;font-weight:500}
+.crow .amt:disabled{opacity:.75}
+.crow .chip{height:24px;border:1px solid var(--line);background:var(--surface);border-radius:999px;font:600 11.5px var(--f-body);padding:0 8px;color:var(--ink);display:inline-flex;align-items:center;flex:none;white-space:nowrap}
+.crow select.chip{padding:0 2px 0 7px}
+.crow select.card{margin-left:auto;border-color:currentColor;background:color-mix(in srgb,currentColor 9%,var(--surface))}
+.crow select.m-sup{color:var(--c-sup)}.crow select.m-eve{color:var(--c-eve)}.crow select.m-eco{color:var(--c-eco)}.crow select.m-ck{color:var(--c-ck)}.crow select.m-cash{color:var(--c-cash)}
+.crow .dchip{position:relative;line-height:1}
+.crow .dchip.empty{color:var(--muted);font-weight:500;padding-top:3px}
+.crow .dchip input{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0}
+.crow .pbtn{color:var(--muted)}
+.crow .pbtn.on{color:var(--ok);border-color:transparent;background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.crow .xb{width:24px;padding:0;justify-content:center;color:var(--muted)}
+.crow .cb{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--green);white-space:nowrap}
+.crow .cb.none{color:var(--muted);font-weight:500}
+.crow .l4{font-size:10.5px;line-height:1.3;color:var(--muted)}
+.crow .l4.auto{color:var(--green)}
+.crow.paid .nm::after{content:" · đã trả";color:var(--ok);font-size:11px}
 .xbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;width:24px;height:24px;font-size:11px;color:var(--muted);display:grid;place-items:center;padding:0}
 .paidbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;font-size:12px;font-weight:600;padding:2px 9px;color:var(--muted)}
 .paidbtn.on{background:color-mix(in srgb,var(--ok) 14%,transparent);border-color:transparent;color:var(--ok)}
@@ -308,7 +317,7 @@ details.cardbox > summary::-webkit-details-marker{display:none}
 @keyframes tw{to{opacity:.9;transform:scale(1.2)}}
 @media (prefers-reduced-motion:reduce){.sparks i{animation:none;opacity:.5}}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.4}}}
-@media (max-width:360px){.parsed,.kpis,.fgrid,.opt{grid-template-columns:1fr}.prow{grid-template-columns:minmax(0,1fr) 104px}.hello{font-size:20px}}
+@media (max-width:360px){.parsed,.kpis,.fgrid,.opt{grid-template-columns:1fr}.crow .amt{width:96px}.hello{font-size:20px}}
 </style>
 </head>
 <body>
@@ -322,7 +331,7 @@ details.cardbox > summary::-webkit-details-marker{display:none}
       <svg class="hat noel-only" viewBox="0 0 46 40" aria-hidden="true"><path d="M5 30C9 15 21 4 38 6c-6 4-8 12-6 24z" fill="#B5432F"/><path d="M14 22c5-8 12-12 20-13" fill="none" stroke="#8F3324" stroke-width="2" stroke-linecap="round" opacity=".6"/><rect x="2" y="26" width="34" height="9" rx="4.5" fill="#FFFFFF" stroke="#E6D9D0"/><circle cx="39" cy="7" r="5" fill="#FFFFFF" stroke="#E6D9D0"/></svg>
     </span>
     <div class="grow">
-      <h1 class="hello">Chào Jasmine</h1>
+      <h1 class="hello" id="helloName">Chào bạn</h1>
     </div>
     <button class="vibebtn" type="button" id="vibeToggle" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>Đổi vibe</button>
     <button class="iconbtn" type="button" data-open-sync aria-label="Đồng bộ OneDrive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.4 1.5A3.8 3.8 0 0 1 17.5 18z"/><path d="M12 11v5M9.8 13.2 12 11l2.2 2.2"/></svg><span class="dot" data-syncdot hidden></span></button>
@@ -463,7 +472,12 @@ details.cardbox > summary::-webkit-details-marker{display:none}
 <section class="view" id="v-nguyen-tac" hidden>
   <div class="top">
     <div class="appmark"><img src="img/card.jpg" data-pageicon="nguyen-tac" data-base="img/card.jpg" alt=""></div>
-    <div class="grow"><h1>Nguyên tắc dùng thẻ</h1><p class="muted small">Chỉ đổi khi Jasmine yêu cầu · không lưu số thẻ, CVV</p></div>
+    <div class="grow"><h1>Nguyên tắc dùng thẻ</h1><p class="muted small">Chỉ đổi khi bạn yêu cầu · không lưu số thẻ, CVV</p></div>
+  </div>
+  <div class="panel stack">
+    <h3>Bạn muốn được gọi là gì?</h3>
+    <div class="field"><label for="nickNames">Mỗi tên một dòng · mỗi ngày app bốc ngẫu nhiên một tên</label><textarea id="nickNames" rows="3" placeholder="người đẹp&#10;Jasmine&#10;mẹ Bơ" autocomplete="off" style="resize:vertical"></textarea></div>
+    <p class="xs muted" id="nickPreview"></p>
   </div>
   <div id="cardsBanner"></div>
   <div class="stack" id="cardBoxes"></div>

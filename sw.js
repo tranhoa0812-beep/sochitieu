@@ -1,7 +1,7 @@
 /* Cho app chạy khi không có mạng.
    Mở app: lấy ngay bản đã lưu trong máy, đồng thời tải bản mới (nếu có mạng) cho lần mở sau.
    Khi sửa app hoặc thêm vibe: thêm file mới vào FILES và tăng số VERSION để máy xoá bộ nhớ cũ. */
-const VERSION = 'sochitieu-v3';
+const VERSION = 'sochitieu-v4';
 const FILES = [
   './', 'index.html', 'app.js', 'vibes.js', 'manifest.webmanifest', 'icon-180.jpg', 'icon-512.jpg',
   'img/app.jpg', 'img/avatar.jpg', 'img/bag.jpg', 'img/brief.jpg', 'img/card.jpg', 'img/cash.jpg', 'img/coins.jpg', 'img/piggy.jpg', 'img/stack.jpg', 'img/wallet.jpg',
