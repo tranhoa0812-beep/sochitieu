@@ -2,7 +2,7 @@
    Dữ liệu nằm trong máy (localStorage). Sao lưu: file SoChiTieu.json trên OneDrive (Lưu vào Tệp), giống app bánh bao.
    Không lưu số thẻ, CVV, OTP, số tài khoản. */
 'use strict';
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.3.0';
 
 /* ---------- tiện ích ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -226,7 +226,8 @@ let PROJ = [];
 function spendsIn(card, p, opt) {
   opt = opt || {};
   let list = txSpends();
-  if (opt.plan) list = list.concat(PROJ.filter(r => !r.paid && r.amt > 0 && isCard(r.method)).map(r => ({ date: r.date, amt: r.amt, method: r.method, kind: r.kind, chan: r.chan, inst: !!r.inst, ref: r.ref })));
+  // kế hoạch chỉ tính phần CHƯA thấy trong sổ (remain), nên khoản đã ghi thật không bị cộng trùng
+  if (opt.plan) list = list.concat(PROJ.filter(r => r.remain > 0 && isCard(r.method)).map(r => ({ date: r.date, amt: r.remain, method: r.method, kind: r.kind, chan: r.chan, inst: !!r.inst, ref: r.ref })));
   return list.filter(x => x.method === card && x.date >= p.start && x.date <= p.end && x.ref !== opt.exclude);
 }
 function supRate(kind) { const R = S.rules.sup; return R.rates[kind] != null ? R.rates[kind] : R.base; }
@@ -294,20 +295,51 @@ function rowsFor(mk) {
     if (!e) continue;   // tháng chỉ có khoản đã chép / đã thêm
     const day = (e.day != null ? e.day : it.day) || 0;
     out.push({ ref: `plan:${mk}:${it.id}`, mk, id: it.id, item: it, e, amt: e ? (e.amt || 0) : 0, day, date: dateIn(mk, day || 15),
-      method: (e && e.method) || it.method, chosen: (e && e.method) || it.method, kind: it.kind, chan: it.chan || 'online', group: it.group, paid: !!(e && e.paid) });
+      method: (e && e.method) || it.method, chosen: (e && e.method) || it.method, kind: it.kind, chan: it.chan || 'online', group: it.group });
   }
   for (const b of S.plan.buys) {
-    if (b.month !== mk || b.bought) continue;
+    if (b.month !== mk) continue;
     out.push({ ref: 'buy:' + b.id, mk, id: 'buy:' + b.id, buy: b, item: { name: b.name, sched: 'buy', hint: b.amt }, amt: b.amt, day: +b.date.slice(8), date: b.date,
-      method: b.method, chosen: b.method, kind: b.kind, chan: b.chan, group: 'Mua sắm', inst: b.pay === 'installment', paid: false });
+      method: b.method, chosen: b.method, kind: b.kind, chan: b.chan, group: 'Mua sắm', inst: b.pay === 'installment' });
   }
   return out;
+}
+/* ---------- tự khớp khoản thật (Nhập liệu / sao kê) với khoản kế hoạch cùng tháng ----------
+   Khoản có nhóm hoàn rõ (bảo hiểm, tiền điện, Shopee, siêu thị, thuốc…) khớp theo nhóm hoàn.
+   Khoản chuyển khoản / khác khớp theo tên (VD "Vietcombank"), hoặc cùng nhóm chi và số tiền gần bằng.
+   Mỗi khoản thật chỉ khớp 1 dòng; dòng ước tính (Shopee…) cộng dồn nhiều khoản. */
+const STOP = new Set(['hop', 'dong', 'tien', 'tra', 'cua', 'con', 'uoc', 'tinh', 'nop', 'mua', 'thang', 'phi', 'khoan']);
+const nameTokens = s => unaccent(norm(s)).replace(/\(.*?\)/g, ' ').split(/[\s–\-+]+/).filter(w => w.length >= 3 && !STOP.has(w));
+const planOf = r => r.amt || r.item.hint || 0;
+function matchesRow(r, t) {
+  if (t.planRef && t.planRef === r.ref) return true;
+  if (!['khac', 'none'].includes(r.kind)) return t.kind === r.kind;
+  const note = unaccent(norm(t.note));
+  if (nameTokens(r.item.name).some(w => w.length >= 5 ? note.includes(w) : note.includes(' ' + w + ' '))) return true;
+  const p = planOf(r);
+  return !!p && t.group === r.group && t.amount >= p * .5 && t.amount <= p * 1.5;
+}
+function matchActuals(rows) {
+  const byMonth = {};
+  rows.forEach(r => { r.actual = 0; r.txs = []; (byMonth[r.mk] = byMonth[r.mk] || []).push(r); });
+  for (const mk of Object.keys(byMonth)) {
+    const rs = byMonth[mk];
+    for (const t of S.tx.filter(x => monthKey(x.date) === mk).sort((a, b) => b.amount - a.amount)) {
+      const c = rs.filter(r => matchesRow(r, t));
+      if (!c.length) continue;
+      c.sort((a, b) => Math.abs(planOf(a) - a.actual - t.amount) - Math.abs(planOf(b) - b.actual - t.amount));
+      c[0].actual += t.amount; c[0].txs.push(t.uid);
+    }
+  }
+  const cur = monthKey(TODAY());
+  rows.forEach(r => { r.past = r.mk < cur; r.remain = r.past ? 0 : Math.max(0, r.amt - r.actual); r.done = r.actual > 0 && r.actual >= planOf(r) * .9; });
 }
 function buildProjection() {
   const base = monthKey(TODAY());
   let rows = [];
   for (let i = -2; i <= 4; i++) rows = rows.concat(rowsFor(addMonths(base, i)));
   rows.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  matchActuals(rows);
   PROJ = rows.filter(r => r.method !== 'auto');
   for (const r of rows.filter(r => r.method === 'auto')) {
     const amt = r.amt || r.item.hint || 0;
@@ -370,23 +402,6 @@ function copyInto(mk) {
   }
   if (!Object.keys(ent).length) delete S.plan.entries[mk];
   return n;
-}
-function markPaid(r, amount) {
-  const amt = amount || r.amt || r.item.hint || 0;
-  if (!amt) { toast('Nhập số tiền trước khi đánh dấu đã trả'); return false; }
-  // trả trong tháng của khoản đó → ghi ngày hôm nay; trả cho tháng khác → ghi đúng ngày hạn
-  const date = monthKey(TODAY()) === r.mk ? TODAY() : r.date;
-  const t = { uid: newUid(), date, time: nowTime(), note: r.item.name.replace(/\s*\(ước tính\)/, ''), amount: amt, group: r.group || 'Khác', method: r.method, kind: r.kind, chan: r.chan, source: 'plan', planRef: r.ref, updatedAt: nowIso() };
-  t.cb = isCard(t.method) ? Math.max(0, Math.round(gain(t.method, { date, amt, kind: t.kind, chan: t.chan, ref: r.ref }).cash)) : 0;
-  S.tx.push(t);
-  if (r.buy) { r.buy.bought = true; r.buy.txUid = t.uid; }
-  else { const e = entry(r.mk, r.id, true); e.amt = amt; e.paid = true; e.txUid = t.uid; e.method = r.method; e.updatedAt = nowIso(); }
-  save(true); return true;
-}
-function unmarkPaid(r) {
-  const e = entry(r.mk, r.id, false); if (!e) return;
-  if (e.txUid) deleteTx(e.txUid, true);
-  e.paid = false; e.txUid = null; e.updatedAt = nowIso(); save(true);
 }
 const nowTime = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
@@ -610,12 +625,13 @@ function openTx(uid) {
    TRANG 2 — KẾ HOẠCH THÁNG
    =================================================================== */
 let curMonth = monthKey(TODAY());
-const MONTHS = () => [0, 1, 2, 3].map(i => addMonths(monthKey(TODAY()), i));
+const MONTHS = () => [-2, -1, 0, 1, 2, 3].map(i => addMonths(monthKey(TODAY()), i));
 const isRestMonth = mk => { const q = S.plan.items.filter(i => i.sched === 'quarterly' && i.kind === 'baohiem'); return q.length > 0 && !q.some(i => occurs(i, mk)); };
 function renderMonthbar() {
-  const ms = MONTHS();
-  if (!ms.includes(curMonth)) curMonth = ms[0];
-  $('#monthbar').innerHTML = ms.map((mk, i) => `<button type="button" data-k="${mk}" aria-pressed="${mk === curMonth}"><b>${mLabel(mk)}</b><span>${i === 0 ? 'tháng này' : '+' + i}${isRestMonth(mk) ? ' · nghỉ Dai-ichi' : ''}</span></button>`).join('');
+  const ms = MONTHS(), cur = monthKey(TODAY());
+  if (!ms.includes(curMonth)) curMonth = cur;
+  $('#monthbar').innerHTML = ms.map(mk => { const d = monthsBetween(cur, mk); return `<button type="button" data-k="${mk}" aria-pressed="${mk === curMonth}"><b>${mLabel(mk)}</b><span>${d === 0 ? 'tháng này' : d < 0 ? 'đã qua · so thực tế' : '+' + d}${d >= 0 && isRestMonth(mk) ? ' · nghỉ Dai-ichi' : ''}</span></button>`; }).join('');
+  const on = $('#monthbar [aria-pressed="true"]'); if (on && on.scrollIntoView && !renderMonthbar.done) { on.scrollIntoView({ inline: 'center', block: 'nearest' }); renderMonthbar.done = true; }
 }
 // Khung Everyday: hoàn tính theo tháng dương lịch (trần tháng), thanh toán theo kỳ sao kê riêng
 function everydayBlock(mk, ee, stmt) {
@@ -639,15 +655,19 @@ function methodSelect(r) {
 function renderPlan() {
   const mk = curMonth, rows = projRows(mk);
   // KPI
-  let total = 0, card = 0;
-  rows.forEach(r => { const a = r.paid ? (r.e && r.e.amt) || 0 : r.amt; total += a; if (isCard(r.method)) card += a; });
+  const past = mk < monthKey(TODAY());
+  let total = 0, card = 0, planned = 0, actual = 0;
+  rows.forEach(r => { const a = r.actual + r.remain; total += a; if (isCard(r.method)) card += a; planned += r.amt; actual += r.actual; });
+  $('#copyPrev').hidden = past;
   // kỳ Supreme chứa giữa tháng (ngày 15): chốt ngày 5 → kỳ 06/11–05/12 cho tháng 11; chốt ngày 20 → kỳ 21/10–20/11
   const supP = stmtPeriod('sup', `${mk}-15`);
   const eveP = cashPeriod('eve', `${mk}-01`);
   const eveStmt = stmtPeriod('eve', `${mk}-15`);
   const se = supEst(spendsIn('sup', supP, { plan: true })), ee = eveEst(spendsIn('eve', eveP, { plan: true }));
   $('#restBanner').innerHTML = isRestMonth(mk) ? `<div class="rest-banner"><span class="sticker sm"><img src="${img('piggy')}" alt=""></span><span class="grow"><b>Tháng nghỉ Dai-ichi.</b> Trần ${short(S.rules.sup.cap)} Supreme còn trống: Shopee chuyển sang Supreme 12%. Hợp lý để mua điện máy.</span></div>` : '';
-  $('#planKpis').innerHTML = `
+  $('#planKpis').innerHTML = past ? `
+    <div class="kpi"><span class="l">Kế hoạch</span><span class="v num">${fmt(planned)}</span></div>
+    <div class="kpi"><span class="l">Thực tế (khớp kế hoạch)</span><span class="v num">${fmt(actual)}</span></div>` : `
     <div class="kpi"><span class="l">Tổng chi dự kiến</span><span class="v num">${fmt(total)}</span></div>
     <div class="kpi"><span class="l">Phần quẹt thẻ</span><span class="v num">${fmt(card)}</span></div>
     <div class="kpi hl"><span class="l">Hoàn tiền dự kiến</span><span class="v num">${fmt(se.est + ee.est)}</span></div>
@@ -667,17 +687,24 @@ function renderPlan() {
   if (!rows.length) { el.innerHTML = `<div class="empty small">${mLabel(mk)} chưa có khoản nào.<br>Bấm <b>Chép từ tháng trước</b>, hoặc chạm khoản bên dưới để thêm.</div>`; }
   else el.innerHTML = rows.map(r => {
     const g = rowGain(r), it = r.item;
-    const amtVal = r.paid ? ((r.e && r.e.amt) || 0) : r.amt;
+    const amtVal = r.amt;
     const ph = lastAmount(r.id, mk) || it.hint || 0;
     const ruleSel = r.buy ? '<span class="chip">Dự định mua</span>' : `<select class="chip" data-rule="${esc(r.ref)}" aria-label="Quy luật lặp ${esc(it.name)}">${Object.entries(SCHED).map(([k, n]) => `<option value="${k}"${k === it.sched ? ' selected' : ''}>${n}</option>`).join('')}</select>`;
     const dateBox = r.buy ? `<span class="chip">trước ${mdy(r.date)}</span>`
-      : `<label class="chip dchip${r.day ? '' : ' empty'}">${r.day ? mdy(dateIn(mk, r.day)) : 'trong tháng'}<input type="date" data-day="${esc(r.ref)}" min="${mk}-01" max="${dateIn(mk, 31)}" value="${r.day ? dateIn(mk, r.day) : ''}" aria-label="Ngày đóng ${esc(it.name)}"${r.paid ? ' disabled' : ''}></label>`;
+      : `<label class="chip dchip${r.day ? '' : ' empty'}">${r.day ? mdy(dateIn(mk, r.day)) : 'trong tháng'}<input type="date" data-day="${esc(r.ref)}" min="${mk}-01" max="${dateIn(mk, 31)}" value="${r.day ? dateIn(mk, r.day) : ''}" aria-label="Ngày đóng ${esc(it.name)}"></label>`;
     const cb = g >= 1 ? `<span class="cb num">~${fmt(g)} hoàn${r.amt ? '' : ' (như lần trước)'}</span>` : `<span class="cb none">${isCard(r.method) && r.method !== 'eco' ? 'trần đã đủ' : 'không hoàn'}</span>`;
-    const note = r.autoWhy ? `<div class="l4 auto">Tự chọn: ${esc(r.autoWhy)}</div>` : it.note ? `<div class="l4">${esc(it.note)}</div>` : '';
-    return `<div class="crow${r.paid ? ' paid' : ''}">
-      <div class="l1"><button class="nm" type="button" data-edit="${esc(r.id)}">${esc(it.name)}</button><input class="amt" inputmode="numeric" aria-label="Số tiền ${esc(it.name)}" data-amt="${esc(r.ref)}" value="${amtVal ? fmt(amtVal) : ''}" placeholder="${ph ? fmt(ph) : 'số tiền'}"${r.paid || r.buy ? ' disabled' : ''}></div>
+    const note = r.autoWhy && !r.past ? `<div class="l4 auto">Tự chọn: ${esc(r.autoWhy)}</div>` : it.note ? `<div class="l4">${esc(it.note)}</div>` : '';
+    // tháng đã qua: dòng 3 so kế hoạch với thực tế (khoản trong sổ / sao kê đã tự khớp)
+    let l3;
+    if (r.past) {
+      const diff = r.actual - r.amt;
+      l3 = r.actual ? `<span class="xs">Thực tế <b class="num">${fmt(r.actual)}</b> · ${r.txs.length} khoản</span><span class="cb num ${diff === 0 ? '' : 'none'}" style="${diff > 0 ? 'color:var(--warn)' : ''}">${diff === 0 ? 'đúng kế hoạch' : (diff > 0 ? 'vượt +' : 'ít hơn ') + fmt(Math.abs(diff))}</span>`
+        : `<span class="xs" style="color:var(--warn);font-weight:600">chưa thấy trong sổ</span><span class="cb none">kế hoạch ${fmt(r.amt)}</span>`;
+    } else l3 = `<button class="chip xb" type="button" data-rm="${esc(r.ref)}" aria-label="Bỏ ${esc(it.name)} khỏi tháng này">✕</button>${cb}`;
+    return `<div class="crow">
+      <div class="l1"><button class="nm" type="button" data-edit="${esc(r.id)}">${esc(it.name)}</button><input class="amt" inputmode="numeric" aria-label="Số tiền kế hoạch ${esc(it.name)}" data-amt="${esc(r.ref)}" value="${amtVal ? fmt(amtVal) : ''}" placeholder="${ph ? fmt(ph) : 'số tiền'}"${r.buy ? ' disabled' : ''}></div>
       <div class="l2">${ruleSel}${dateBox}${methodSelect(r)}</div>
-      <div class="l3"><button class="chip pbtn${r.paid ? ' on' : ''}" type="button" data-paid="${esc(r.ref)}">${r.paid ? '✓ đã trả' : r.buy ? 'Đã mua?' : 'Đã trả?'}</button>${r.paid ? '' : `<button class="chip xb" type="button" data-rm="${esc(r.ref)}" aria-label="Bỏ ${esc(it.name)} khỏi tháng này">✕</button>`}${cb}</div>
+      <div class="l3">${l3}</div>
       ${note}</div>`;
   }).join('');
   // thêm khoản chưa có trong tháng
@@ -717,13 +744,6 @@ $('#planRows').addEventListener('change', e => {
 });
 $('#planRows').addEventListener('input', e => { const inp = e.target.closest('[data-amt]'); if (!inp) return; const d = digits(inp.value); inp.value = d ? fmt(d) : ''; });
 $('#planRows').addEventListener('click', e => {
-  const p = e.target.closest('[data-paid]');
-  if (p) {
-    const r = findRow(p.dataset.paid); if (!r) return;
-    if (r.paid) { unmarkPaid(r); toast('Đã bỏ "đã trả" và xóa khoản trong sổ'); }
-    else { const inp = $(`[data-amt="${CSS.escape(r.ref)}"]`); const amt = digits(inp && inp.value) || r.amt; if (markPaid(r, amt)) toast('Đã ghi vào sổ chi tiêu'); }
-    renderAll(); return;
-  }
   const rm = e.target.closest('[data-rm]');
   if (rm) {
     const r = findRow(rm.dataset.rm); if (!r) return;
@@ -768,7 +788,9 @@ function buyOptions(b) {
   return opts.sort((a, c) => (c.cash - (c.hosp ? 1e9 : 0)) - (a.cash - (a.hosp ? 1e9 : 0)));
 }
 function renderBuys() {
-  const list = S.plan.buys.filter(b => !b.bought);
+  // món đã thấy trong sổ (khớp tự động) hoặc tháng đã qua thì không còn là "dự định"
+  const done = new Set(PROJ.filter(r => r.buy && (r.done || r.past)).map(r => r.buy.id));
+  const list = S.plan.buys.filter(b => !b.bought && !done.has(b.id));
   $('#buys').innerHTML = list.map(b => {
     const opts = buyOptions(b), best = opts[0];
     const planned = !!b.month;
@@ -785,7 +807,7 @@ function renderBuys() {
         <button type="button" data-bpay="${b.id}:installment" aria-pressed="${b.pay === 'installment'}"><span class="xs muted">Trả góp 0%</span><b class="num">+0</b><span class="xs muted">mất toàn bộ điểm</span></button>
       </div>${quay}
       <p class="xs muted">Không mua cùng kỳ với viện phí. Quẹt thẳng thẻ, không qua VNPAY/MoMo.</p>
-      <div class="row" style="gap:8px">${planned ? `<button class="btn sm grow" type="button" data-bunplan="${b.id}">Bỏ khỏi kế hoạch</button><button class="btn sm primary grow" type="button" data-bbought="${b.id}">Đã mua</button>` : `<button class="btn sm primary grow" type="button" data-bplan="${b.id}">Đưa vào kế hoạch ${show ? mLabel(show.mk) : ''}</button>`}</div>
+      <div class="row" style="gap:8px">${planned ? `<button class="btn sm grow" type="button" data-bunplan="${b.id}">Bỏ khỏi kế hoạch</button>` :`<button class="btn sm primary grow" type="button" data-bplan="${b.id}">Đưa vào kế hoạch ${show ? mLabel(show.mk) : ''}</button>`}</div>
     </div>`;
   }).join('');
 }
@@ -796,7 +818,6 @@ $('#buys').addEventListener('click', e => {
   if (ds.bpay) { const [id, pay] = ds.bpay.split(':'); const b = S.plan.buys.find(x => x.id === id); b.pay = pay; save(true); renderAll(); return; }
   if (ds.bplan) { const b = S.plan.buys.find(x => x.id === ds.bplan); const o = buyOptions(b)[0]; if (!o) return; Object.assign(b, { month: o.mk, method: o.m, date: o.date }); save(true); curMonth = o.mk; renderAll(); toast(`Đã đưa vào kế hoạch ${mLabel(o.mk)}`); return; }
   if (ds.bunplan) { const b = S.plan.buys.find(x => x.id === ds.bunplan); Object.assign(b, { month: null, method: null, date: null }); save(true); renderAll(); return; }
-  if (ds.bbought) { const r = findRow('buy:' + ds.bbought); if (r && markPaid(r, r.amt)) { renderAll(); toast('Đã ghi khoản mua vào sổ'); } }
 });
 
 /* thêm / sửa khoản cố định */
@@ -937,7 +958,8 @@ function renderReport() {
   $('#reminders').innerHTML = reminders().map(r => `<div class="remind${r.w ? ' warn' : ''}"><span class="dot"></span><span>${r.t}</span></div>`).join('');
   // đến hạn tuần này
   const today = TODAY();
-  const due = PROJ.filter(r => !r.paid && !r.buy && r.day && r.date >= addDays(today, -10) && r.date <= addDays(today, 7)).sort((a, b) => a.date.localeCompare(b.date));
+  // chỉ nhắc: khoản có ngày đóng trong 7 ngày tới (hoặc quá hạn ≤10 ngày) mà chưa thấy trong sổ
+  const due = PROJ.filter(r => !r.buy && !r.past && r.day && r.actual === 0 && r.date >= addDays(today, -10) && r.date <= addDays(today, 7)).sort((a, b) => a.date.localeCompare(b.date));
   $('#dueWrap').hidden = !due.length;
   $('#dueList').innerHTML = due.map(r => {
     const amt = r.amt || lastAmount(r.id, r.mk) || r.item.hint || 0;
@@ -946,8 +968,7 @@ function renderReport() {
     return `<div class="due"><span class="sticker"><img src="${img(isCard(r.method) ? 'card' : 'wallet')}" alt=""></span>
       <div class="grow"><div style="font-weight:600">${esc(r.item.name)}</div><div class="when">Hạn ${dm(r.date)} · ${n < 0 ? `<b style="color:var(--bad)">quá ${-n} ngày</b>` : n === 0 ? 'hôm nay' : `còn ${n} ngày`}${r.item.note ? ' · ' + esc(r.item.note) : ''}</div>
       <div class="row wrap" style="gap:6px;margin-top:4px">${pill(r.method)}${g >= 1 ? `<span class="xs cbk">~${fmt(g)} hoàn</span>` : ''}</div></div>
-      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><input inputmode="numeric" data-dueamt="${esc(r.ref)}" value="${amt ? fmt(amt) : ''}" placeholder="số tiền" aria-label="Số tiền thật ${esc(r.item.name)}">
-      <button class="btn sm primary" type="button" data-duepay="${esc(r.ref)}">Đã trả</button></div></div>`;
+      <b class="num">${amt ? fmt(amt) : '—'}</b></div>`;
   }).join('');
   // khoảng thời gian
   const rg = rangeOf();
@@ -970,7 +991,7 @@ function renderReport() {
   $('#payLegend').innerHTML = order.map(m => `<div><span class="sw" style="background:var(--c-${m})"></span><span>${METHODS[m].name}${METHODS[m].type ? ` <span class="xs muted">${METHODS[m].type.toLowerCase()}</span>` : ''}</span><span class="v num">${short(pm[m] || 0)}</span></div>`).join('');
   renderCardReports();
   // sắp trả
-  const up = PROJ.filter(r => !r.paid && r.date > addDays(today, 7) && r.date <= addDays(today, 30) && (r.amt || r.item.hint)).sort((a, b) => a.date.localeCompare(b.date));
+  const up = PROJ.filter(r => !r.past && r.actual === 0 && r.date > addDays(today, 7) && r.date <= addDays(today, 30) && (r.amt || r.item.hint)).sort((a, b) => a.date.localeCompare(b.date));
   $('#upcoming').innerHTML = up.length ? up.map(r => { const g = rowGain(r); const a = r.amt || r.item.hint; return `<div class="item"><span class="sticker sm"><img src="${img(isCard(r.method) ? 'card' : 'wallet')}" alt=""></span><span class="grow"><span style="font-weight:600;display:block">${esc(r.item.name)}</span><span class="sub">${r.day ? 'hạn ' + dm(r.date) : 'trong ' + mLabel(r.mk)} · ${pill(r.method)}${r.amt ? '' : '<span class="tag">số lần trước</span>'}</span></span><span><span class="amt num" style="display:block">${fmt(a)}</span>${g >= 1 ? `<span class="cbk num" style="display:block;text-align:right">~${fmt(g)} hoàn</span>` : ''}</span></div>`; }).join('') : '<div class="empty small">Không có khoản nào trong 30 ngày tới.</div>';
   // danh sách khoản chi
   const sorted = tx.slice().sort((a, b) => (b.date + (b.time || '')).localeCompare(a.date + (a.time || '')));
@@ -1015,13 +1036,6 @@ $('#rangeSeg').addEventListener('click', e => { const b = e.target.closest('butt
 $('#rangeNav').addEventListener('click', e => { const b = e.target.closest('[data-step]'); if (!b) return; stepRange(+b.dataset.step); renderReport(); });
 $('#rFrom').addEventListener('change', e => { RG.from = e.target.value; renderReport(); });
 $('#rTo').addEventListener('change', e => { RG.to = e.target.value; renderReport(); });
-$('#dueList').addEventListener('input', e => { const i = e.target.closest('[data-dueamt]'); if (!i) return; const d = digits(i.value); i.value = d ? fmt(d) : ''; });
-$('#dueList').addEventListener('click', e => {
-  const b = e.target.closest('[data-duepay]'); if (!b) return;
-  const r = findRow(b.dataset.duepay); if (!r) return;
-  const amt = digits($(`[data-dueamt="${CSS.escape(r.ref)}"]`).value);
-  if (markPaid(r, amt)) { renderAll(); toast('Đã ghi "đã trả" vào sổ chi tiêu'); }
-});
 
 /* ===================================================================
    TRANG 4 — NGUYÊN TẮC DÙNG THẺ
